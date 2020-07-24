@@ -1,0 +1,45 @@
+# === CORD-19 and QAEngine parameters:
+[data]
+encoder = "/home/ego/Github/corona_nlp_app/src/model/scibert-nli"
+index = "/home/ego/Github/corona_nlp_app/src/data/cord19_bio/bio_lg.index"
+model = "amoux/scibert_nli_squad"
+model_device = "cpu"
+nlp_model = "en_core_web_sm"
+papers = "/home/ego/Github/corona_nlp_app/src/data/cord19_bio/bio_sents_lg.pkl"
+sort_first = false
+source = [
+  "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/biorxiv_medrxiv/biorxiv_medrxiv",
+]
+
+# === FastAPI application settings ===
+[fastapi]
+nprobe = 4
+port = 6000
+tts_cache = "/home/ego/Github/corona_nlp_app/src/data/tts_cache"
+
+# === Streamlit application settings ===
+[streamlit]
+enable_tts = false
+knnq_file = "/home/ego/Github/corona_nlp_app/src/QKNN.pkl"
+metadata = "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/all_sources_metadata_2020-03-13.csv"
+num_papers = "14,565"
+num_sentences = "2,317,923"
+tts_port = 3000
+
+# === Text to speech API settings ===
+[tts]
+apikey = "KimsTEZMLu5TPUmS62utcjbt-ywpu95inG1cvqW43ROL"
+disable_ssl = false
+url = "https://api.us-south.text-to-speech.watson.cloud.ibm.com/instances/7b0d5686-5cb2-4bad-bc78-796b95de05cc"
+
+[tts.voice]
+customizable = true
+description = "Kevin: American English male voice. Dnn technology"
+gender = "male"
+language = "en-US"
+name = "en-US_KevinV3Voice"
+url = "https://api.us-south.text-to-speech.watson.cloud.ibm.com/instances/7b0d5686-5cb2-4bad-bc78-796b95de05cc/v1/voices/en-US_KevinV3Voice"
+
+[tts.voice.supported_features]
+custom_pronuciation = true
+voice_transformation = false

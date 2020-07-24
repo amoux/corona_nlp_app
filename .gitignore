@@ -1,0 +1,20 @@
+# vscode
+.vscode
+
+# application data sources
+src/CORD-19-research-challenge/*
+src/model/*
+src/data/*
+
+# c-extensions
+*.so
+
+# packages
+*.egg
+*.egg-info
+build
+eggs
+parts
+bin
+var
+sdist
