@@ -67,10 +67,7 @@ class ModelAPI:
                            nprobe: int = 1,
                            port: Optional[int] = None) -> Dict[str, Any]:
         """Return the predicted answer given the question and k-theresholds."""
-        input_dict = {"question": question}
-        if port is None:
-            port = self.port
-        endpoint = "question/"
+        input_dict, endpoint = {"question": question}, "question/"
         if context is not None and isinstance(context, str):
             endpoint = "question-with-context/"
             input_dict.update({"context": context})
@@ -81,7 +78,10 @@ class ModelAPI:
                 "mode": mode,
                 "nprobe": nprobe
             })
-        request_url = self.url.format(endpoint=endpoint, port=port)
+        request_url = self.url.format(
+            port=port if port is not None else self.port,
+            endpoint=endpoint
+        )
         response = requests.post(request_url, json=input_dict)
         if response.status_code == 200:
             return response.json()
@@ -93,31 +93,33 @@ class ModelAPI:
                             add_paper_ids: bool = False,
                             port: Optional[int] = None) -> Dict[str, Any]:
         """Return top-k nearest sentences given a single sentence sequence."""
+        request_url = self.url.format(
+            port=port if port is not None else self.port,
+            endpoint="sentence-similarity/"
+        )
         input_dict = {
-            "sentence": sentence,
-            "topk": topk,
-            "nprobe": nprobe,
-            "add_paper_ids": add_paper_ids
+            'sentence': sentence,
+            'topk': topk,
+            'nprobe': nprobe,
+            'add_paper_ids': add_paper_ids
         }
-        if port is None:
-            port = self.port
-        request_url = self.url.format(port=port,
-                                      endpoint="sentence-similarity/")
         response = requests.post(request_url, json=input_dict)
         if response.status_code == 200:
             return response.json()
 
-    def text_to_speech(
-            self, context: str, k=0.99, port=None) -> Dict[str, str]:
-        """Return the synthesized (preprocessed) context to audio file path."""
-        if port is None:
-            port = self.port
-
-        server = self.url.format(port=port, endpoint="audio_file")
-        data = f"{server}?text={context}&k={k}"
-        resp = requests.get(data)
-        if resp.status_code == 200:
-            return resp.json()
+    def text_to_speech(self,
+                       text: str,
+                       prob: float = 0.99,
+                       port: Optional[int] = None) -> Dict[str, str]:
+        """Return the file path of the synthesized text to audio of speech."""
+        request_url = self.url.format(
+            port=port if port is not None else self.port,
+            endpoint='text-to-speech/'
+        )
+        input_dict = {'text': text, 'prob': prob}
+        response = requests.post(request_url, json=input_dict)
+        if response.status_code == 200:
+            return response.json()
 
 
 class MetadataReader(CORD19Dataset):
@@ -132,16 +134,12 @@ class MetadataReader(CORD19Dataset):
                            self.meta_df['url'].to_list())
         for id, url in zip(paper_ids, urls):
             id = str(id).strip()
-            if (
-                len(id) > 0
-                and id != 'nan'
-                and id in self.paper_index
-                and id not in self.paper_urls
-            ):
+            if len(id) > 0 and id != 'nan' \
+                    and id in self.paper_index and id not in self.paper_urls:
                 self.paper_urls[id] = url
 
-    def load_urls(
-            self, output: Union[Dict[str, int], List[int]]) -> Dict[str, Any]:
+    def load_urls(self,
+                  output: Union[Dict[str, int], List[int]]) -> Dict[str, Any]:
         paper_ids = None
         if isinstance(output, dict) and 'paper_ids' in output:
             paper_ids = output['paper_ids']
@@ -151,7 +149,6 @@ class MetadataReader(CORD19Dataset):
             raise ValueError('Expected output to be either a Dict[str, int] '
                              'where the key is ``paper_ids`` and value is a '
                              'list of integers or a List[int] of iterable ids')
-
         data = []
         for id in output['paper_ids']:
             title = self.title(id).strip()
@@ -163,7 +160,6 @@ class MetadataReader(CORD19Dataset):
                 url = self.paper_urls[paper_id].strip()
                 if len(url) == 0:
                     url = 'url - n/a'
-
                 data.append({'title': title, 'url': url})
 
         return data

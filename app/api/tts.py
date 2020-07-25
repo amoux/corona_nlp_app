@@ -59,7 +59,7 @@ class IBMTextToSpeech:
             self.load_meta(meta_id, load_meta_files=load_meta_files)
 
     def is_paragraph_valid(self, sequence: str) -> bool:
-        return is_valid_paragraph(sequence, nlp=self.nlp)
+        return is_valid_paragraph(sequence, model_name_or_nlp=self.nlp)
 
     def list_voices(self) -> List[Dict[str, str]]:
         return self.text_to_speech.list_voices().get_result()["voices"]
@@ -246,7 +246,7 @@ class IBMTextToSpeech:
     def __getitem__(self, item):
         return self.queries[item]
 
-    def __call__(self, text: str, play_file=True, k=0.99):
+    def __call__(self, text: str, k=0.99, play_file=True):
         """Encode text to speech and play or return the path of the audio file.
 
         Returns the path to the audio file if play_file is set to False. Otherwise,

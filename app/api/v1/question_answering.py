@@ -33,7 +33,7 @@ def answer(question: str,
     output = engine.answer(question, k=mink, mode=mode, nprobe=nprobe)
     context = output['context']
     answer = output['answer'].strip()
-    # If no answer then try again with maxk value with larger nprobe threshold.
+
     if len(answer) == 0:
         max_nprobe = max(engine.nprobe_list)
         nprobe = max_nprobe if nprobe >= max_nprobe \
