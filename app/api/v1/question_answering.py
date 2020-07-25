@@ -13,9 +13,15 @@ from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
 from app.utils import app_config
 
 config = app_config()
-API_PORT = config['fastapi']['port']
+ENGINE_CONFIG = config['engine']
+ENGINE_CONFIG.update({'source': config['cord']['source']})
+ENGINE_CONFIG.update({
+    'encoder': config['models']['sentence_transformer'],
+    'model': config['models']['question_answering'],
+    'nlp_model': config['models']['spacy_nlp']
+})
+ENGINE_CONFIG.update(config['cord']['init'])
 FAISS_INDEX_NPROBE = config['fastapi']['nprobe']
-ENGINE_CONFIG = config['data']
 
 router = APIRouter()
 engine = QAEngine(**ENGINE_CONFIG)

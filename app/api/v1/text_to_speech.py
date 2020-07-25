@@ -6,8 +6,9 @@ from app.api.tts import IBMTextToSpeech
 from app.utils import app_config
 
 config = app_config()
-TTS_CONFIG = config['tts']
-TTS_CONFIG.update({'cache_dir': config['fastapi']['tts_cache']})
+TTS_CONFIG = config['tts']['init']
+TTS_CONFIG.update({'cache_dir': config['tts']['cache_dir']})
+TTS_CONFIG.update({'voice': config['tts']['voice']['name']})
 
 router = APIRouter()
 ibm_tts = IBMTextToSpeech(**TTS_CONFIG)

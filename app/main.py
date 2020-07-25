@@ -11,12 +11,12 @@ def corona_nlp_app() -> FastAPI:
 
     config = app_config()
     APP_HTTP = 'http://localhost'
-    API_PORT = f"{APP_HTTP}:{config['fastapi']['port']}"
-    TTS_PORT = f"{APP_HTTP}:{config['streamlit']['tts_port']}"
+    BACKEND_PORT = f"{APP_HTTP}:{config['fastapi']['port']}"
+    FRONTEND_PORT = f"{APP_HTTP}:{config['streamlit']['port']}"
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[APP_HTTP, API_PORT, TTS_PORT],
+        allow_origins=[APP_HTTP, BACKEND_PORT, FRONTEND_PORT],
         allow_credentials=True,
         allow_methods=['*'],
         allow_headers=['*'],
