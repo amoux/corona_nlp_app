@@ -5,10 +5,11 @@ from corona_nlp.engine import QAEngine
 from corona_nlp.utils import clean_tokenization, normalize_whitespace
 from fastapi import APIRouter, Body, HTTPException
 
-from app.api.schemas import (QuestionAnsweringBase, QuestionAnsweringInput,
-                             QuestionAnsweringOutput,
+from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              QuestionAnsweringWithContextInput,
-                             QuestionAnsweringWithContextOutput)
+                             QuestionAnsweringWithContextOutput,
+                             SentenceSimilarityInput, SentenceSimilarityOutput,
+                             SentenceSimilarityWithPaperIdsOutput)
 from app.utils import app_config
 
 config = app_config()
@@ -20,11 +21,11 @@ router = APIRouter()
 engine = QAEngine(**ENGINE_CONFIG)
 
 
-def answer_question(question: str,
-                    mink: int = 15,
-                    maxk: int = 30,
-                    mode: str = 'bert',
-                    nprobe: Optional[int] = None) -> QuestionAnsweringOutput:
+def answer(question: str,
+           mink: int = 15,
+           maxk: int = 30,
+           mode: str = 'bert',
+           nprobe: Optional[int] = None) -> QuestionAnsweringOutput:
     """Answer the inputs and build the API data attributes."""
     if nprobe is None:
         nprobe = FAISS_INDEX_NPROBE
@@ -44,9 +45,10 @@ def answer_question(question: str,
 
     sent_ids = output['ids']
     n_sents = len(sent_ids)
-    paper_ids = [x['paper_ids'] for x in engine.papers.lookup(sent_ids)]
-    sorted_top_k_paper_ids, _ = zip(*Counter(paper_ids).most_common())
-    titles = list(engine.titles(sorted_top_k_paper_ids))
+    paper_ids = [x['paper_id'] for x in engine.papers.lookup(sent_ids)]
+    top_k_paper_ids, _ = zip(*Counter(paper_ids).most_common())
+    top_k_paper_ids = list(top_k_paper_ids)
+    titles = list(engine.titles(top_k_paper_ids))
 
     return QuestionAnsweringOutput(
         question=question,
@@ -54,27 +56,69 @@ def answer_question(question: str,
         context=context,
         n_sents=n_sents,
         titles=titles,
-        paper_ids=sorted_top_k_paper_ids,
+        paper_ids=top_k_paper_ids,
     )
 
 
-def answer_question_with_context(
-        question: str, context: str) -> QuestionAnsweringWithContextOutput:
+def decode(question: str, context: str) -> QuestionAnsweringWithContextOutput:
     answer, context = engine.decode(question, context)
     return QuestionAnsweringWithContextOutput(answer=answer, context=context)
 
 
-@router.get('/question/', response_model=QuestionAnsweringOutput)
-async def question(q_in: QuestionAnsweringInput):
-    input_dict = q_in.dict()
-    if input_dict.question:
-        return answer_question(**input_dict.dict())
+def similar(sentence: str,
+            topk: int = 5,
+            nprobe: int = 1,
+            add_paper_ids: bool = False) -> Union[
+                SentenceSimilarityOutput,
+                SentenceSimilarityWithPaperIdsOutput]:
+    dists, indices = engine.similar(sentence, k=topk, nprobe=nprobe)
+    sentences = [engine.papers[id] for id in indices.flatten()]
+    output = {
+        'n_sents': len(sentences),
+        "sents": sentences,
+        "dists": dists.tolist()[0]
+    }
+    if not add_paper_ids:
+        output = SentenceSimilarityOutput(**output)
+    else:
+        output.update({
+            'paper_ids': [
+                i['paper_id'] for i in engine.papers.lookup(indices.flatten())
+            ]
+        })
+        output = SentenceSimilarityWithPaperIdsOutput(**output)
+    return output
 
 
-@router.get(
+@router.post(
+    '/question/',
+    tags=["answer"],
+    response_model=QuestionAnsweringOutput
+)
+def question(input: QuestionAnsweringInput):
+    if input.question:
+        input_dict = input.dict()
+        return answer(**input_dict)
+
+
+@router.post(
     '/question-with-context/',
+    tags=["answer"],
     response_model=QuestionAnsweringWithContextOutput,
 )
-async def question_with_context(q_in: QuestionAnsweringWithContextInput):
-    if q_in.question and q_in.context:
-        return answer_question_with_context(**q_in.dict())
+def question_with_context(input: QuestionAnsweringWithContextInput):
+    if input.question and input.context:
+        input_dict = input.dict()
+        return decode(**input_dict)
+
+
+@router.post(
+    '/sentence-similarity/',
+    tags=["similar"],
+    response_model=Union[SentenceSimilarityOutput,
+                         SentenceSimilarityWithPaperIdsOutput]
+)
+def sentence_similarity(input: SentenceSimilarityInput):
+    if input.sentence:
+        input_dict = input.dict()
+        return similar(**input_dict)

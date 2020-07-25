@@ -1,17 +1,11 @@
-from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
 
-class CompressMode(str, Enum):
-    freq = 'freq'
-    bert = 'bert'
-
-
 class QuestionAnsweringBase(BaseModel):
     question: str = Field(None, title="Question to pass to the model.",
-                          max_length=300)
+                          max_length=2000)
 
 
 class QuestionAnsweringInput(QuestionAnsweringBase):
@@ -31,8 +25,7 @@ class QuestionAnsweringOutput(QuestionAnsweringBase):
 
 class QuestionAnsweringWithContextInput(QuestionAnsweringBase):
     context: str = Field(..., description=(
-        "The context for answering the input question."),
-    )
+        "The context for answering the input question."))
 
 
 class QuestionAnsweringWithContextOutput(BaseModel):
@@ -40,22 +33,23 @@ class QuestionAnsweringWithContextOutput(BaseModel):
     context: str
 
 
-class TextToSpeechIn(BaseModel):
-    pass
-
-
 class SentenceSimilarityInput(BaseModel):
     sentence: str
-    topk: int
+    topk: Optional[int] = 5
+    nprobe: Optional[int] = 1
     add_paper_ids: Optional[bool] = Field(None, description=(
-        "Weather to include the paper ids with the output."),
-    )
+        "Weather to include the paper ids with the output."))
 
 
 class SentenceSimilarityOutput(BaseModel):
     n_sents: int
     sents: List[str]
+    dists: List[int]
 
 
 class SentenceSimilarityWithPaperIdsOutput(SentenceSimilarityOutput):
     paper_ids: List[int]
+
+
+class TextToSpeechIn(BaseModel):
+    pass

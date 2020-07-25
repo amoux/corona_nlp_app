@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 import requests
@@ -50,7 +50,7 @@ def render(question: str, prediction: Dict[str, str], jupyter=True,
 
 
 class ModelAPI:
-    url = "http://{}:{}/api/v1/corona_nlp/{}"
+    url = "http://{}:{}/{}"
 
     def __init__(self, port: Union[str, int], ip: str = "127.0.0.1"):
         if isinstance(port, int):
@@ -58,37 +58,54 @@ class ModelAPI:
         self.port = port
         self.url = self.url.format(ip, "{port}", "{endpoint}",)
 
-    def question_answering(
-            self, question: str, context: str = None,
-            min_k=25, max_k=100, mode="spacy", port=None) -> Dict[str, Any]:
+    def question_answering(self,
+                           question: str,
+                           context: Optional[str] = None,
+                           mink: int = 15,
+                           maxk: int = 30,
+                           mode: str = "bert",
+                           nprobe: int = 1,
+                           port: Optional[int] = None) -> Dict[str, Any]:
         """Return the predicted answer given the question and k-theresholds."""
+        input_dict = {"question": question}
         if port is None:
             port = self.port
+        endpoint = "question/"
+        if context is not None and isinstance(context, str):
+            endpoint = "question-with-context/"
+            input_dict.update({"context": context})
+        else:
+            input_dict.update({
+                "mink": mink,
+                "maxk": maxk,
+                "mode": mode,
+                "nprobe": nprobe
+            })
+        request_url = self.url.format(endpoint=endpoint, port=port)
+        response = requests.post(request_url, json=input_dict)
+        if response.status_code == 200:
+            return response.json()
 
-        server = self.url.format(port=port, endpoint="answer")
-        data = f"{server}?question={question}"
-        if context is not None:
-            data = data + f"&context={context}"
-
-        data = data + f"&min_k={min_k}&max_k={max_k}&mode={mode.lower()}"
-        resp = requests.get(data)
-        if resp.status_code == 200:
-            return resp.json()
-
-    def sentence_similarity(self, sentence: str, top_k=5,
-                            with_paper_ids=True, port=None) -> Dict[str, Any]:
+    def sentence_similarity(self,
+                            sentence: str,
+                            topk: int = 5,
+                            nprobe: int = 1,
+                            add_paper_ids: bool = False,
+                            port: Optional[int] = None) -> Dict[str, Any]:
         """Return top-k nearest sentences given a single sentence sequence."""
+        input_dict = {
+            "sentence": sentence,
+            "topk": topk,
+            "nprobe": nprobe,
+            "add_paper_ids": add_paper_ids
+        }
         if port is None:
             port = self.port
-
-        server = self.url.format(port=port, endpoint="similar")
-        data = f"{server}?sequence={sentence}&top_k={top_k}"
-        if with_paper_ids:
-            data = data + "&paper_ids"
-
-        resp = requests.get(data)
-        if resp.status_code == 200:
-            return resp.json()
+        request_url = self.url.format(port=port,
+                                      endpoint="sentence-similarity/")
+        response = requests.post(request_url, json=input_dict)
+        if response.status_code == 200:
+            return response.json()
 
     def text_to_speech(
             self, context: str, k=0.99, port=None) -> Dict[str, str]:

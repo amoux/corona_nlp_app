@@ -4,5 +4,5 @@ router = APIRouter()
 
 
 @router.get('/')
-async def get_audio_file(text: str):
+def get_audio_file(text: str):
     pass
