@@ -38,7 +38,7 @@ spacy_nlp = "en_core_web_sm"
 # Backend Configuration:
 #   port: The port to use for the backend API.
 #   nprobe: Default parameter value when left as None in some method.
-port = 6000
+port = 8080
 nprobe = 4
 
 [streamlit]

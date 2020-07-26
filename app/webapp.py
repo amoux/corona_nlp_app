@@ -7,17 +7,19 @@ import requests
 import streamlit as st
 from corona_nlp.utils import DataIO, clean_tokenization, normalize_whitespace
 
-from .utils import MetadataReader, ModelAPI, app_config
+from app.utils import MetadataReader, ModelAPI, app_config
 
 config = app_config()
-FRONTEND_PORT = config['streamlit']['port']
-BACKEND_PORT = config['fastapi']['port']
 CORD19_SOURCE = config['cord']['source']
 CORD19_METADATA = config['cord']['metadata']
 KNNQ_FILE = config['streamlit']['knnq_file']
+N_PAPERS = config['streamlit']['num_papers']
+N_SENTS = config['streamlit']['num_sentences']
 ENABLE_TTS = config['streamlit']['enable_tts']
+FRONTEND_PORT = config['streamlit']['port']
+BACKEND_PORT = config['fastapi']['port']
 TTS_PORT = config['tts']['port']
-if not TTS_PORT:  # Set to default port if text-to-speech enabled.
+if not TTS_PORT:
     TTS_PORT = config['fastapi']['port']
 
 api = ModelAPI(port=BACKEND_PORT)

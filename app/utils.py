@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import requests
@@ -57,6 +57,15 @@ class ModelAPI:
             port = str(port)
         self.port = port
         self.url = self.url.format(ip, "{port}", "{endpoint}",)
+
+    def engine_meta(self, port: Optional[int] = None) -> Dict[str, Tuple[Any, ...]]:
+        request_url = self.url.format(
+            port=port if port is not None else self.port,
+            endpoint='engine-meta/'
+        )
+        response = requests.get(request_url)
+        if response.status_code == 200:
+            return response.json()
 
     def question_answering(self,
                            question: str,
@@ -130,36 +139,54 @@ class MetadataReader(CORD19Dataset):
         self._init_urls()
 
     def _init_urls(self):
-        paper_ids, urls = (self.meta_df['sha'].to_list(),
-                           self.meta_df['url'].to_list())
-        for id, url in zip(paper_ids, urls):
-            id = str(id).strip()
-            if len(id) > 0 and id != 'nan' \
-                    and id in self.paper_index and id not in self.paper_urls:
-                self.paper_urls[id] = url
+        paper_ids = self.meta_df['sha'].tolist()
+        paper_urls = None
+        is_url_from_doi_key = False
+        if 'url' in self.meta_df.columns:
+            paper_urls = self.meta_df['url'].to_list()
+        elif 'doi' in self.meta_df.columns:
+            paper_urls = self.meta_df['doi'].to_list()
+            is_url_from_doi_key = True
+        else:
+            raise ValueError(
+                "Failed to find URLs from both possible columns: `url|doi`"
+                "Make sure the Metadata CSV file has either the full url "
+                "under the column `< url >` or format if `< doi >` is the "
+                "column name as e.g., col:doi `10.1007/s00134-020-05985-9`"
+            )
+        for paper_id, url in zip(paper_ids, paper_urls):
+            paper_id = str(paper_id).strip()
+            if len(paper_id) > 0 and paper_id != 'nan' \
+                    and paper_id in self.paper_index \
+                    and paper_id not in self.paper_urls:
+                if is_url_from_doi_key:
+                    # This url format issue has been fixed in newer versions
+                    # `> 2020-03-13` of the CORD-19 Dataset (kaggle version).
+                    url = f'https://{url}' if 'doi.org' in url \
+                        else f'https://doi.org/{url}'
+                self.paper_urls[paper_id] = url
 
-    def load_urls(self,
-                  output: Union[Dict[str, int], List[int]]) -> Dict[str, Any]:
-        paper_ids = None
-        if isinstance(output, dict) and 'paper_ids' in output:
+    def load_urls(self, output: Union[Dict[str, int], List[int]]):
+        paper_ids: List[int] = None
+        if isinstance(output, dict) and 'paper_ids' in output.keys():
             paper_ids = output['paper_ids']
         elif isinstance(output, list) and isinstance(output[0], int):
             paper_ids = output
         else:
-            raise ValueError('Expected output to be either a Dict[str, int] '
-                             'where the key is ``paper_ids`` and value is a '
-                             'list of integers or a List[int] of iterable ids')
-        data = []
-        for id in output['paper_ids']:
-            title = self.title(id).strip()
+            raise ValueError(
+                'Expected output to be either a Dict[str, int] '
+                'where the key is ``paper_ids`` and value is a '
+                'list of integers or a List[int] of iterable ids'
+            )
+        data: Dict[str, str] = []
+        for index in paper_ids:
+            title = self.title(index).strip()
             if len(title) == 0:
                 title = 'title - n/a'
-
-            paper_id = self[id]
+            paper_id = self[index]
             if paper_id in self.paper_urls:
                 url = self.paper_urls[paper_id].strip()
                 if len(url) == 0:
                     url = 'url - n/a'
                 data.append({'title': title, 'url': url})
-
         return data

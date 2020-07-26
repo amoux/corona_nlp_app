@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from corona_nlp.engine import QAEngine
 from corona_nlp.utils import clean_tokenization, normalize_whitespace
@@ -25,6 +25,56 @@ FAISS_INDEX_NPROBE = config['fastapi']['nprobe']
 
 router = APIRouter()
 engine = QAEngine(**ENGINE_CONFIG)
+
+
+def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
+    devices = {k: v.type for k, v in engine.engine_devices.items()}
+    meta = {
+        'string_store': {
+            'num_sents': engine.papers.num_sents,
+            'num_papers': engine.papers.num_papers
+        },
+        'embedding_store': {
+            'ntotal': engine.index.ntotal,
+            'd': engine.index.d
+        },
+        'models': {
+            'sentence_transformer': {
+                'model_name_or_path': ENGINE_CONFIG['encoder'],
+                'device': devices['sentence_transformer_model_device'],
+                'max_seq_length': engine.encoder.max_seq_length,
+                'all_special_tokens': {
+                    f'{t[1:-1].lower()}_token': {'id': i, 'token': t}
+                    for i, t in zip(engine.tokenizer.all_special_ids,
+                                    engine.tokenizer.all_special_tokens)
+                }
+            },
+            'question_answering': {
+                'model_name_or_path': ENGINE_CONFIG['model'],
+                'device': devices['question_answering_model_device'],
+                'num_parameters': engine.model.num_parameters(),
+                'num_labels': engine.model.num_labels
+            },
+            'compressors': {
+                'bert_summarizer': {
+                    'device': devices['summarizer_model_device'],
+                    'reduce_option': engine._bert_summarizer.reduce_option,
+                    'hidden': engine._bert_summarizer.hidden,
+                    'custom_model': ENGINE_CONFIG['model'],
+                    'custom_tokenizer': ENGINE_CONFIG['encoder']
+                },
+                'freq_summarizer': {
+                    'lang': engine.nlp.meta['lang'],
+                    'name': engine.nlp.meta['name'],
+                    'spacy_version': engine.nlp.meta['spacy_version'],
+                    'speed': engine.nlp.meta['speed'],
+                    'description': engine.nlp.meta['description']
+                }
+            }
+        },
+        'devices': devices
+    }
+    return meta
 
 
 def answer(question: str,
@@ -94,6 +144,11 @@ def similar(sentence: str,
         })
         output = SentenceSimilarityWithPaperIdsOutput(**output)
     return output
+
+
+@router.get('/engine-meta/', tags=['meta'])
+def get_engine_meta():
+    return engine_meta()
 
 
 @router.post(
