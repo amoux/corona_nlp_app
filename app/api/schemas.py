@@ -39,16 +39,12 @@ class SentenceSimilarityInput(BaseModel):
     sentence: str
     topk: Optional[int] = 5
     nprobe: Optional[int] = 1
-    add_paper_ids: Optional[bool] = False
 
 
 class SentenceSimilarityOutput(BaseModel):
     n_sents: int
     sents: List[str]
-    dists: List[int]
-
-
-class SentenceSimilarityWithPaperIdsOutput(SentenceSimilarityOutput):
+    dists: List[float]
     paper_ids: List[int]
 
 

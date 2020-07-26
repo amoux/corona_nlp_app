@@ -7,7 +7,7 @@ import requests
 import streamlit as st
 from corona_nlp.utils import DataIO, clean_tokenization, normalize_whitespace
 
-from app.utils import MetadataReader, ModelAPI, app_config
+from utils import MetadataReader, ModelAPI, app_config
 
 config = app_config()
 CORD19_SOURCE = config['cord']['source']
@@ -47,6 +47,74 @@ def load_questions(category: str,
     key_words = ', '.join(key_words)
     random_id = random.choice(list(range(len(questions))))
     return (questions, key_words, random_id)
+
+
+def count_words(string, min_word_length=2) -> int:
+    tokens = clean_tokenization(normalize_whitespace(string)).split()
+    words = ["".join([char for char in token if char not in punctuation])
+             for token in tokens if len(token) > min_word_length]
+    return len(words)
+
+
+def powerup(k: int, rate=2.5) -> int:
+    return round(((k * rate) / 2) + k)
+
+
+def load_answer(question, mink=15, maxk=30, mode='bert') -> Dict[str, Any]:
+    output = api.question_answering(question, mink=mink, maxk=maxk, mode=mode)
+    if output:
+        if len(output['answer'].strip()) == 0:
+            maxk = powerup(mink)
+            output = api.question_answering(
+                question, mink=mink, maxk=maxk, mode=mode)
+    return output
+
+
+def render_output_info(n_sents: int, n_papers: int):
+    st.markdown('---')
+    total_sents = int(N_SENTS.replace(',', ''))
+    total_papers = int(N_PAPERS.replace(',', ''))
+    about_output = (
+        f"ℹ Answer based on ***{n_sents}***/{total_sents} sentences "
+        f"obtained from ***{n_papers}***/{total_papers} unique papers:"
+    )
+    st.markdown(about_output)
+
+
+def render_answer(question: str, output: dict) -> None:
+    st.success("Done!")
+    question = normalize_whitespace(question)
+    answer = clean_tokenization(output["answer"])
+    context = clean_tokenization(output["context"])
+
+    # Main markdown labels for the outputs.
+    Q = f'**{question}**'
+    A = "### 💡 Answer"
+    C = "### ⚗ Context"
+
+    if len(answer) == 0:
+        st.markdown('### 📃 Summary')
+        st.write("> ", context.replace(question, Q, 1))
+    else:
+        try:
+            # Search the answer in the context for highlighting.
+            match = re.search(answer, context)
+            start, end = match.span()
+        except Exception:
+            # Failed to highlight the answer in the context.
+            st.markdown(A)
+            st.write('> ', answer.capitalize())
+            st.markdown(C)
+            context = context.replace(question, Q, 1)
+            st.write('> ' + context.replace(answer, f'`{answer}`', -1))
+        else:
+            # Highlight the answer found in the context.
+            st.markdown(A)
+            st.write('>', answer.capitalize())
+            st.markdown(C)
+            context = context.replace(question, Q, 1)
+            context = context.replace(answer, f'`{answer}`', -1)
+            st.write('> ' + context)
 
 
 def main():
@@ -230,74 +298,6 @@ def main():
       year={2020}
     }
     ''')
-
-
-def count_words(string, min_word_length=2) -> int:
-    tokens = clean_tokenization(normalize_whitespace(string)).split()
-    words = ["".join([char for char in token if char not in punctuation])
-             for token in tokens if len(token) > min_word_length]
-    return len(words)
-
-
-def powerup(k: int, rate=2.5) -> int:
-    return round(((k * rate) / 2) + k)
-
-
-def load_answer(question, mink=15, maxk=30, mode='bert') -> Dict[str, Any]:
-    output = api.question_answering(question, mink=mink, maxk=maxk, mode=mode)
-    if output:
-        if len(output['answer'].strip()) == 0:
-            maxk = powerup(mink)
-            output = api.question_answering(
-                question, mink=mink, maxk=maxk, mode=mode)
-    return output
-
-
-def render_output_info(n_sents: int, n_papers: int):
-    st.markdown('---')
-    total_sents = int(N_SENTS.replace(',', ''))
-    total_papers = int(N_PAPERS.replace(',', ''))
-    about_output = (
-        f"ℹ Answer based on ***{n_sents}***/{total_sents} sentences "
-        f"obtained from ***{n_papers}***/{total_papers} unique papers:"
-    )
-    st.markdown(about_output)
-
-
-def render_answer(question: str, output: dict) -> None:
-    st.success("Done!")
-    question = normalize_whitespace(question)
-    answer = clean_tokenization(output["answer"])
-    context = clean_tokenization(output["context"])
-
-    # Main markdown labels for the outputs.
-    Q = f'**{question}**'
-    A = "### 💡 Answer"
-    C = "### ⚗ Context"
-
-    if len(answer) == 0:
-        st.markdown('### 📃 Summary')
-        st.write("> ", context.replace(question, Q, 1))
-    else:
-        try:
-            # Search the answer in the context for highlighting.
-            match = re.search(answer, context)
-            start, end = match.span()
-        except Exception:
-            # Failed to highlight the answer in the context.
-            st.markdown(A)
-            st.write('> ', answer.capitalize())
-            st.markdown(C)
-            context = context.replace(question, Q, 1)
-            st.write('> ' + context.replace(answer, f'`{answer}`', -1))
-        else:
-            # Highlight the answer found in the context.
-            st.markdown(A)
-            st.write('>', answer.capitalize())
-            st.markdown(C)
-            context = context.replace(question, Q, 1)
-            context = context.replace(answer, f'`{answer}`', -1)
-            st.write('> ' + context)
 
 
 if __name__ == '__main__':

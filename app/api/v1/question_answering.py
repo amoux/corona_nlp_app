@@ -8,8 +8,7 @@ from fastapi import APIRouter, Body, HTTPException
 from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              QuestionAnsweringWithContextInput,
                              QuestionAnsweringWithContextOutput,
-                             SentenceSimilarityInput, SentenceSimilarityOutput,
-                             SentenceSimilarityWithPaperIdsOutput)
+                             SentenceSimilarityInput, SentenceSimilarityOutput)
 from app.utils import app_config
 
 config = app_config()
@@ -123,27 +122,18 @@ def decode(question: str, context: str) -> QuestionAnsweringWithContextOutput:
 
 def similar(sentence: str,
             topk: int = 5,
-            nprobe: int = 1,
-            add_paper_ids: bool = False) -> Union[
-                SentenceSimilarityOutput,
-                SentenceSimilarityWithPaperIdsOutput]:
-    dists, indices = engine.similar(sentence, k=topk, nprobe=nprobe)
-    sentences = [engine.papers[id] for id in indices.flatten()]
-    output = {
-        'n_sents': len(sentences),
-        "sents": sentences,
-        "dists": dists.tolist()[0]
-    }
-    if not add_paper_ids:
-        output = SentenceSimilarityOutput(**output)
-    else:
-        output.update({
-            'paper_ids': [
-                i['paper_id'] for i in engine.papers.lookup(indices.flatten())
-            ]
-        })
-        output = SentenceSimilarityWithPaperIdsOutput(**output)
-    return output
+            nprobe: int = 1) -> SentenceSimilarityOutput:
+    dists, indices = engine.similar(query=sentence, k=topk, nprobe=nprobe)
+    dists, indices = dists.tolist()[0], indices.tolist()[0]
+    sentences = [engine.papers[sent_id] for sent_id in indices]
+    paper_ids = [i['paper_id'] for i in engine.papers.lookup(indices)]
+
+    return SentenceSimilarityOutput(
+        n_sents=len(sentences),
+        sents=sentences,
+        dists=dists,
+        paper_ids=paper_ids
+    )
 
 
 @router.get('/engine-meta/', tags=['meta'])
@@ -176,8 +166,7 @@ def question_with_context(input: QuestionAnsweringWithContextInput):
 @router.post(
     '/sentence-similarity/',
     tags=["similar"],
-    response_model=Union[SentenceSimilarityOutput,
-                         SentenceSimilarityWithPaperIdsOutput]
+    response_model=SentenceSimilarityOutput
 )
 def sentence_similarity(input: SentenceSimilarityInput):
     if input.sentence:
