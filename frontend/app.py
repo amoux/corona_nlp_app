@@ -13,8 +13,13 @@ config = app_config()
 CORD19_SOURCE = config['cord']['source']
 CORD19_METADATA = config['cord']['metadata']
 KNNQ_FILE = config['streamlit']['knnq_file']
+
 N_PAPERS = config['streamlit']['num_papers']
 N_SENTS = config['streamlit']['num_sentences']
+SUBSETS = ', '.join([f'`{s}`' for s in config['streamlit']['subsets']])
+DATASET_VERSION = config['streamlit']['dataset_version']
+TEXT_SOURCE = config['streamlit']['text_source']
+
 ENABLE_TTS = config['streamlit']['enable_tts']
 FRONTEND_PORT = config['streamlit']['port']
 BACKEND_PORT = config['fastapi']['port']
@@ -146,8 +151,8 @@ def main():
 
     # NOTE: Text to speech is optional. To enable uncomment
     # the code below and set ``ENABLE_TTS = True`` and set the server port.
-    # with_text_to_speech = st.sidebar.checkbox("Turn ON/OFF Text-to-Speech",
-    #                                           value=False)
+    with_text_to_speech = st.sidebar.checkbox("Turn ON/OFF Text-to-Speech",
+                                              value=False)
 
     st.sidebar.subheader('Context Compression')
     desc_compressor = (
@@ -175,14 +180,7 @@ def main():
 
     k_categories = list(KNNQ.keys())
     selected_cat = st.selectbox('🧬 Select a Topic',
-                                k_categories,
-                                index=KNNQ_INDEX).lower()
-    # @st.cache
-    # def load_questions(category: str) -> Tuple[List[str], str, int]:
-    #     questions = KNNQ[category]
-    #     key_words = ', '.join(list(KNNQ.keys()))
-    #     random_id = random.choice(list(range(len(questions))))
-    #     return questions, key_words, random_id
+                                k_categories, index=KNNQ_INDEX).lower()
 
     st.subheader(f"{selected_cat.title()} Related Questions")
     desc_entities = (
@@ -191,8 +189,7 @@ def main():
     )
     questions, key_words, random_id = load_questions(selected_cat, knnq=KNNQ)
     chosen_question = st.selectbox(f"{desc_entities}: {key_words}",
-                                   questions,
-                                   index=random_id)
+                                   questions, index=random_id)
     if chosen_question:
         output = load_answer(chosen_question,
                              mink=MIN_SENTS,
@@ -205,11 +202,11 @@ def main():
                            n_papers=len(titles_and_urls))
         SUBSET_INFO_STATE = set_info_state(titles_and_urls)
 
-        if ENABLE_TTS:  # to enable this feature see line [67]
-            audiofile = api.text_to_speech(context=output['context'],
-                                           port=TTS_PORT)
+        if ENABLE_TTS:
+            audiofile = api.text_to_speech(text=output['context'],
+                                           prob=0.99, port=TTS_PORT)
             if audiofile:
-                st.audio(audiofile['file_path'], format='audio/wav')
+                st.audio(audiofile['audio_file_path'], format='audio/wav')
 
     sentence_mode = 'Sentence Similarity'
     st.sidebar.subheader('Search Mode')
@@ -268,16 +265,14 @@ def main():
                         'to the articles in this application is entirely from '
                         'the CORD-19 dataset.*')
     st.sidebar.markdown('---')
-
     # Content displayed at the bottom of the page:
     st.markdown('---')
     st.markdown('#### Outputs based on the following:')
-    st.markdown('- dataset: `2020-04-24`')
-    st.markdown(
-        '- subsets: `comm_use_subset`, `noncomm_use_subset`, `biorxiv_medrxiv`')
-    st.markdown(f'- papers: `{N_PAPERS}`')
-    st.markdown('- text-source: `body_text`')
-    st.markdown(f'- embeddings/sentences: `{N_SENTS}` ')
+    st.markdown(f'- dataset             : `{DATASET_VERSION}`')
+    st.markdown(f'- subsets             : `{SUBSETS}`')
+    st.markdown(f'- papers              : `{N_PAPERS}`')
+    st.markdown(f'- text-source         : `{TEXT_SOURCE}`')
+    st.markdown(f'- embeddings/sentences: `{N_SENTS}`')
     st.markdown('Tool created by *Carlos Segura* for the '
                 '[COVID-19 Open Research Dataset Challenge]'
                 '(https://www.kaggle.com/allen-institute-for-ai/CORD-19-research-challenge)')

@@ -9,18 +9,10 @@ from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              QuestionAnsweringWithContextInput,
                              QuestionAnsweringWithContextOutput,
                              SentenceSimilarityInput, SentenceSimilarityOutput)
-from app.utils import app_config
+from app.api.v1.config import app_config, engine_config
 
-config = app_config()
-ENGINE_CONFIG = config['engine']
-ENGINE_CONFIG.update({'source': config['cord']['source']})
-ENGINE_CONFIG.update({
-    'encoder': config['models']['sentence_transformer'],
-    'model': config['models']['question_answering'],
-    'nlp_model': config['models']['spacy_nlp']
-})
-ENGINE_CONFIG.update(config['cord']['init'])
-FAISS_INDEX_NPROBE = config['fastapi']['nprobe']
+ENGINE_CONFIG = engine_config('config.toml')
+FAISS_INDEX_NPROBE = app_config('config.toml')['fastapi']['nprobe']
 
 router = APIRouter()
 engine = QAEngine(**ENGINE_CONFIG)

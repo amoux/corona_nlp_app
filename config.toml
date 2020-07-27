@@ -1,71 +1,45 @@
 [cord]
-# CORD-19 Dataset Configuration:
-#   metadata: Path to the metadata CSV file.
-#   source: A single path or a list of paths to the directory where the JSON files are located.
-#   index_start: <TODO: FINISH DOCUMENTATION>
-#   sort_first: <TODO: FINISH DOCUMENTATION>
 metadata = "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/all_sources_metadata_2020-03-13.csv"
 source = [
-  "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/biorxiv_medrxiv/biorxiv_medrxiv",
+    '/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/pmc_custom_license/pmc_custom_license',
+    '/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/biorxiv_medrxiv/biorxiv_medrxiv',
+    '/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/noncomm_use_subset/noncomm_use_subset'
 ]
-[cord.init]
-index_start = 1
-sort_first = false
 
 [engine]
-# Question Answering Engine Configuration:
-#   model_device: <TODO: FINISH DOCUMENTATION>
-#   index: File path to the faiss index embedding datastore.
-#   papers: File path to the binary/pickled instance of preprocessed sentences.
-# Shared Keys:
-#   [dataset]      -> key(s): {source}
-#   [dataset.init] -> key(s): {sort_first, index_start}
-#   [models]       -> key(s): {spacy_nlp, sentence_transformer, question_answering}
 model_device = "cpu"
 index = "/home/ego/Github/corona_nlp_app/src/data/cord19_bio/bio_lg.index"
 papers = "/home/ego/Github/corona_nlp_app/src/data/cord19_bio/bio_sents_lg.pkl"
 
+[data]
+embeddings = ""
+
 [models]
-# Models Configuration:
-#   question_answering: <TODO: FINISH DOCUMENTATION>
-#   sentence_transformer: <TODO: FINISH DOCUMENTATION>
-#   spacy_nlp: <TODO: FINISH DOCUMENTATION>
 question_answering = "amoux/scibert_nli_squad"
 sentence_transformer = "/home/ego/Github/corona_nlp_app/src/model/scibert-nli"
-spacy_nlp = "en_core_web_sm"
+spacy_nlp = "en_core_sci_sm"
 
 [fastapi]
-# Backend Configuration:
-#   port: The port to use for the backend API.
-#   nprobe: Default parameter value when left as None in some method.
 port = 8080
 nprobe = 4
 
 [streamlit]
-# Frontend Configuration:
-#   port: The streamlit port, needs to be different from fastapi's port.
-#   enable_tts: Wether to enable text-to-speech in the web application.
-#   num_papers: Display the number of papers being used.
-#   num_sentences: Display the number of sentences being used.
-#   knnq_file: Also known as `KNNQ`, a mapping of keys to questions for select bar.
-# Shared Keys:
-#   [cord] -> key(s): {metadata}
 port = 8084
-enable_tts = false
-num_papers = "14,565"
-num_sentences = "2,317,923"
+enable_tts = true
+num_papers = "803"
+num_sentences = "120,291"
+text_source = "body_text"
+subsets = ['pmc_custom_license', 'biorxiv_medrxiv', 'noncomm_use_subset']
+dataset_version = "2020-03-13"
 knnq_file = "/home/ego/Github/corona_nlp_app/src/QKNN.pkl"
 
 [tts]
-# Text-to-Speech Configuration:
-#   port: Set the port here to use a different port. Otherwise, default main port is used.
-#   cache_dir: The directory where the synthesized text-to-speech files will be saved.
-#   api_key: <TODO: FINISH DOCUMENTATION>
-#   disable_ssl: <TODO: FINISH DOCUMENTATION>
-#   url: <TODO: FINISH DOCUMENTATION>
-#   voice: <TODO: FINISH DOCUMENTATION>
 port = false
 cache_dir = "/home/ego/Github/corona_nlp_app/src/data/tts_cache"
+
+[cord.init]
+index_start = 1
+sort_first = true
 
 [tts.init]
 apikey = "KimsTEZMLu5TPUmS62utcjbt-ywpu95inG1cvqW43ROL"
