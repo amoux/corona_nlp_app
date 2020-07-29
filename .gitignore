@@ -2,9 +2,7 @@
 .vscode
 
 # application data sources
-src/CORD-19-research-challenge/*
-src/model/*
-src/data/*
+src/*
 
 # c-extensions
 *.so

@@ -4,8 +4,10 @@ from typing import List, Optional, Union
 import faiss
 import numpy as np
 import plac
+import torch
 import toml
 from corona_nlp.dataset import CORD19Dataset
+from corona_nlp.datatypes import Papers
 from corona_nlp.transformer import SentenceTransformer
 
 DEFAULT_CONFIG = './config.toml'
@@ -113,20 +115,23 @@ def main(
     cfg_num_sentences = papers.num_sents
 
     # save the instance of papers to file
-    papers_file = data_dir.joinpath(
-        f"STRING_STORE_{papers.num_papers}.pkl"
-    )
+    papers_file = data_dir.joinpath(f"STRING_STORE_{cfg_num_papers}.pkl")
     papers.to_disk(papers_file)
     cfg_papers = papers_file.absolute().as_posix()
 
+    del papers, cord19  # remove objects to free memory
+
     encoder = SentenceTransformer(encoder)
-    embedding = encoder.encode(papers, show_progress=True)
-    assert embedding.shape[0] == len(papers)
+    if encoder.device.type == 'cuda':
+        torch.cuda.empty_cache()
+    embedding = encoder.encode(Papers.from_disk(cfg_papers),
+                               show_progress=True)
+
+    assert embedding.shape[0] == cfg_num_sentences
+    del encoder  # remove object to free memory
 
     # save the encoded embeddings to file
-    embed_file = data_dir.joinpath(
-        f"EMBED_STORE_{papers.num_papers}.npy"
-    )
+    embed_file = data_dir.joinpath(f"EMBED_STORE_{cfg_num_papers}.npy")
     np.save(embed_file, embedding)
     cfg_numpy = embed_file.absolute().as_posix()
 
@@ -138,12 +143,13 @@ def main(
     index_ivf.verbose = True
     index_ivf.train(embedding)
     index_ivf.add(embedding)
+
     assert index_ivf.ntotal == embedding.shape[0]
+    del embedding  # remove object to free memory before saving index.
 
     # save the indexer of embeddings to file
-    npapers = papers.num_papers
     index_file = data_dir.joinpath(
-        f'EMBED_STORE_IVF{nlist}_HNSW{m}_NP{npapers}.bin'
+        f'EMBED_STORE_IVF{nlist}_HNSW{m}_NP{cfg_num_papers}.bin'
     )
     faiss.write_index(index_ivf, index_file.as_posix())
     cfg_index = index_file.absolute().as_posix()

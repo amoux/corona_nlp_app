@@ -75,14 +75,13 @@ def load_answer(question, mink=15, maxk=30, mode='bert') -> Dict[str, Any]:
     return output
 
 
-def render_output_info(n_sents: int, n_papers: int):
-    st.markdown('---')
-    total_sents = int(N_SENTS.replace(',', ''))
-    total_papers = int(N_PAPERS.replace(',', ''))
+def render_output_info(n_sents: int, n_papers: int) -> None:
+    # the actual totals
+    total_sentences, total_papers = N_SENTS, N_PAPERS
     about_output = (
-        f"ℹ Answer based on ***{n_sents}***/{total_sents} sentences "
-        f"obtained from ***{n_papers}***/{total_papers} unique papers:"
-    )
+        f"ℹ Answer based on ***{n_sents}***/{total_sentences} sentences "
+        f"obtained from ***{n_papers}***/{total_papers} unique papers:")
+    st.markdown('---')
     st.markdown(about_output)
 
 
@@ -91,7 +90,6 @@ def render_answer(question: str, output: dict) -> None:
     question = normalize_whitespace(question)
     answer = clean_tokenization(output["answer"])
     context = clean_tokenization(output["context"])
-
     # Main markdown labels for the outputs.
     Q = f'**{question}**'
     A = "### 💡 Answer"
@@ -202,7 +200,7 @@ def main():
                            n_papers=len(titles_and_urls))
         SUBSET_INFO_STATE = set_info_state(titles_and_urls)
 
-        if ENABLE_TTS:
+        if ENABLE_TTS and with_text_to_speech:
             audiofile = api.text_to_speech(text=output['context'],
                                            prob=0.99, port=TTS_PORT)
             if audiofile:
@@ -270,9 +268,9 @@ def main():
     st.markdown('#### Outputs based on the following:')
     st.markdown(f'- dataset             : `{DATASET_VERSION}`')
     st.markdown(f'- subsets             : `{SUBSETS}`')
-    st.markdown(f'- papers              : `{N_PAPERS}`')
+    st.markdown(f'- papers              : `{N_PAPERS:,.0f}`')
     st.markdown(f'- text-source         : `{TEXT_SOURCE}`')
-    st.markdown(f'- embeddings/sentences: `{N_SENTS}`')
+    st.markdown(f'- embeddings/sentences: `{N_SENTS:,.0f}`')
     st.markdown('Tool created by *Carlos Segura* for the '
                 '[COVID-19 Open Research Dataset Challenge]'
                 '(https://www.kaggle.com/allen-institute-for-ai/CORD-19-research-challenge)')

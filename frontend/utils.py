@@ -9,6 +9,8 @@ import toml
 from corona_nlp.dataset import CORD19Dataset
 from spacy import displacy
 
+REGX_URL = r"(((http|https)\:\/\/www\.)|((http|https)\:\/\/))|((http|https)\/{1,2})"
+
 
 def app_config(toml_config: str = './config.toml') -> Dict[str, Any]:
     config_file = Path(toml_config).absolute()
@@ -133,9 +135,11 @@ class MetadataReader(CORD19Dataset):
         paper_ids = self.meta_df['sha'].tolist()
         paper_urls = None
         is_url_from_doi_key = False
-        if 'url' in self.meta_df.columns:
+        columns = list(map(lambda item: item.lower().strip(),
+                           self.meta_df.columns))
+        if 'url' in columns:
             paper_urls = self.meta_df['url'].to_list()
-        elif 'doi' in self.meta_df.columns:
+        elif 'doi' in columns:
             paper_urls = self.meta_df['doi'].to_list()
             is_url_from_doi_key = True
         else:
@@ -146,15 +150,25 @@ class MetadataReader(CORD19Dataset):
                 "column name as e.g., col:doi `10.1007/s00134-020-05985-9`"
             )
         for paper_id, url in zip(paper_ids, paper_urls):
+            url = str(url).strip()
+            if len(url) == 0:
+                continue
             paper_id = str(paper_id).strip()
             if len(paper_id) > 0 and paper_id != 'nan' \
                     and paper_id in self.paper_index \
                     and paper_id not in self.paper_urls:
+
+                # This url format issue has been fixed in newer versions
+                # `> 2020-03-13` of the CORD-19 Dataset (kaggle version).
+                # Ugly most deal with ugly. I really dont care about this.
                 if is_url_from_doi_key:
-                    # This url format issue has been fixed in newer versions
-                    # `> 2020-03-13` of the CORD-19 Dataset (kaggle version).
+                    match = re.match(REGX_URL, url)
+                    if match is not None and match.group():
+                        url = url.replace(match.group(), '') \
+                            .replace('://', '').replace('//', '').strip()
                     url = f'https://{url}' if 'doi.org' in url \
                         else f'https://doi.org/{url}'
+
                 self.paper_urls[paper_id] = url
 
     def load_urls(self, output: Union[Dict[str, int], List[int]]):
