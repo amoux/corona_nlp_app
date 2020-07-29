@@ -1,7 +1,7 @@
 import random
 import re
 from string import punctuation
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import streamlit as st
@@ -10,30 +10,59 @@ from corona_nlp.utils import DataIO, clean_tokenization, normalize_whitespace
 from utils import MetadataReader, ModelAPI, app_config
 
 config = app_config()
-CORD19_SOURCE = config['cord']['source']
-CORD19_METADATA = config['cord']['metadata']
-KNNQ_FILE = config['streamlit']['knnq_file']
-
+# Information related to the dataset and number of samples.
 N_PAPERS = config['streamlit']['num_papers']
 N_SENTS = config['streamlit']['num_sentences']
 SUBSETS = ', '.join([f'`{s}`' for s in config['streamlit']['subsets']])
 DATASET_VERSION = config['streamlit']['dataset_version']
 TEXT_SOURCE = config['streamlit']['text_source']
-
-ENABLE_TTS = config['streamlit']['enable_tts']
+# Data sources for the application's content.
+CORD19_SOURCE = config['cord']['source']
+CORD19_METADATA = config['cord']['metadata']
+QKNN_FILE = config['streamlit']['qknn_file']
+# Ports for connecting the backend services
 FRONTEND_PORT = config['streamlit']['port']
 BACKEND_PORT = config['fastapi']['port']
-TTS_PORT = config['tts']['port']
-if not TTS_PORT:
-    TTS_PORT = config['fastapi']['port']
+# Text to speech specific configuration.
+TTS_PORT: Optional[int] = None
+if config['streamlit']['enable_tts']:
+    unique_tts_port = config['tts']['port']
+    TTS_PORT = unique_tts_port if unique_tts_port \
+        else config['fastapi']['port']
+
 
 api = ModelAPI(port=BACKEND_PORT)
 meta_reader = MetadataReader(metadata_path=CORD19_METADATA,
                              source=CORD19_SOURCE)
 
 
+def main_app_welcome_text():
+    #  Inside a function to keep things clean in main.
+    st.title('⚕ COVID-19')
+    st.header('Semantic Question Answering System')
+    st.sidebar.title('Built with state-of-the-art Transformer models 🤗')
+    st.sidebar.markdown("> The CORD-19 dataset represents the most extensive "
+                        "machine-readable coronavirus literature collection "
+                        "available for data mining to date")
+    st.markdown('> Use this as a tool to search and explore `COVID-19` '
+                'research literature with natural language.')
+    st.markdown('- Open the sidebar **>** (↖ *top-left*) to enter a'
+                ' question or choose a question based on one of the topics'
+                ' below to get started.')
+    st.markdown('---')
+    st.markdown('*Questions extracted from the literature, sorted'
+                ' based on similarity and grouped via clustering*.')
+    st.sidebar.markdown('---')
+    st.sidebar.title('Say Something to Coronavirus Literature')
+    st.sidebar.markdown('- Articulating to it in sentences will '
+                        'usually produce better results than keywords.')
+    st.sidebar.markdown('- The model is case sensitive. Indicating that '
+                        'upper/lower case letters affect the "meaning".')
+    st.sidebar.header('Settings')
+
+
 @st.cache(allow_output_mutation=True)
-def load_task_clusters(file_name=KNNQ_FILE):
+def load_task_clusters(file_name=QKNN_FILE):
     tasks = DataIO.load_data(file_name)
     return tasks
 
@@ -121,36 +150,18 @@ def render_answer(question: str, output: dict) -> None:
 
 
 def main():
-    st.title('⚕ COVID-19')
-    st.header('Semantic Question Answering System')
-    st.sidebar.title('Built with state-of-the-art Transformer models 🤗')
-    st.sidebar.markdown("> The CORD-19 dataset represents the most extensive "
-                        "machine-readable coronavirus literature collection "
-                        "available for data mining to date")
-    st.markdown('> Use this as a tool to search and explore `COVID-19` '
-                'research literature with natural language.')
-    st.markdown('- Open the sidebar **>** (↖ *top-left*) to enter a'
-                ' question or choose a question based on one of the topics'
-                ' below to get started.')
-    st.markdown('---')
-    st.markdown('*Questions extracted from the literature, sorted'
-                ' based on similarity and grouped via clustering*.')
-    st.sidebar.markdown('---')
-    st.sidebar.title('Say Something to Coronavirus Literature')
-    st.sidebar.markdown('- Articulating to it in sentences will '
-                        'usually produce better results than keywords.')
-    st.sidebar.markdown('- The model is case sensitive. Indicating that '
-                        'upper/lower case letters affect the "meaning".')
-    st.sidebar.header('Settings')
-
+    main_app_welcome_text()
     SUBSET_INFO_STATE = None
-    render_titles = st.sidebar.checkbox(
-        "Render Article Titles and Links", value=False)
+    render_titles = st.sidebar.checkbox("Render Article Titles and Links",
+                                        value=False)
 
-    # NOTE: Text to speech is optional. To enable uncomment
-    # the code below and set ``ENABLE_TTS = True`` and set the server port.
-    with_text_to_speech = st.sidebar.checkbox("Turn ON/OFF Text-to-Speech",
-                                              value=False)
+    desc_tts = "Enable text to speech for context outputs."
+    desc_tts_value = False  # False that is enabled.
+    if TTS_PORT is None:
+        desc_tts = "Text to speech feature is currently not enabled."
+        desc_tts_value = True  # True that is disabled.
+
+    with_text_to_speech = st.sidebar.checkbox(desc_tts, value=desc_tts_value)
 
     st.sidebar.subheader('Context Compression')
     desc_compressor = (
@@ -159,10 +170,12 @@ def main():
         ' Frequency - (Easy-to-read Context: 🥇); Topmost sentences scored '
         'based on basic word frequency.'
     )
+
     compressor = st.sidebar.selectbox(
         desc_compressor,
         options=("Embedding", "Frequency",),
     )
+
     compressor = 'freq' if compressor == "Frequency" else "bert"
     st.sidebar.header('K-Nearest Neighbors (K-NN)')
     desc_context = (
@@ -177,14 +190,15 @@ def main():
     KNNQ_INDEX = 4
 
     k_categories = list(KNNQ.keys())
-    selected_cat = st.selectbox('🧬 Select a Topic',
-                                k_categories, index=KNNQ_INDEX).lower()
+    selected_cat = st.selectbox(
+        '🧬 Select a Topic', k_categories, index=KNNQ_INDEX).lower()
 
     st.subheader(f"{selected_cat.title()} Related Questions")
     desc_entities = (
         f"🏷 this group of '{selected_cat}' questions"
         " has a relationship to the subsequent entities"
     )
+
     questions, key_words, random_id = load_questions(selected_cat, knnq=KNNQ)
     chosen_question = st.selectbox(f"{desc_entities}: {key_words}",
                                    questions, index=random_id)
@@ -200,7 +214,8 @@ def main():
                            n_papers=len(titles_and_urls))
         SUBSET_INFO_STATE = set_info_state(titles_and_urls)
 
-        if ENABLE_TTS and with_text_to_speech:
+        if TTS_PORT is not None \
+                and isinstance(TTS_PORT, int) and with_text_to_speech:
             audiofile = api.text_to_speech(text=output['context'],
                                            prob=0.99, port=TTS_PORT)
             if audiofile:
@@ -212,28 +227,29 @@ def main():
         "Sentence-similarity works only when"
         " the text entered in the box below."
     )
+
     search_mode = st.sidebar.selectbox(
         desc_search_mode,
         ('Question Answering', sentence_mode,),
     )
+
     question = st.sidebar.text_area('💬 Type your question or sentence')
     if question:
         if search_mode == sentence_mode:
             output = api.sentence_similarity(question, topk=MIN_SENTS)
-            if output:
-                for sent in output['sents']:
-                    sent = normalize_whitespace(sent)
-                    st.markdown(f'- {sent}')
+            if output:  # Render sentences line by line:
+                for sentence in output['sents']:
+                    sentence = normalize_whitespace(sentence)
+                    st.markdown(f'- {sentence}')
 
                 titles_and_urls = meta_reader.load_urls(output)
                 render_output_info(n_sents=output['n_sents'],
                                    n_papers=len(titles_and_urls))
                 SUBSET_INFO_STATE = set_info_state(titles_and_urls)
         else:
-            max_valid_words = 4
+            min_valid_words = 4  # Minimum number of words to consider valid.
             num_valid_words = count_words(question, min_word_length=2)
-
-            if num_valid_words >= max_valid_words:
+            if num_valid_words >= min_valid_words:
                 with st.spinner("'Fetching results..."):
                     output = load_answer(question,
                                          mink=MIN_SENTS,
@@ -247,7 +263,7 @@ def main():
                     SUBSET_INFO_STATE = set_info_state(titles_and_urls)
             else:
                 st.sidebar.error(
-                    f'A question needs to be at least {max_valid_words}'
+                    f'A question needs to be at least {min_valid_words}'
                     f' words long, not {num_valid_words}'
                 )
 

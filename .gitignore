@@ -4,6 +4,9 @@
 # application data sources
 src/*
 
+# developer directories
+frontend-dev
+
 # c-extensions
 *.so
 
