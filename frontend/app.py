@@ -159,8 +159,15 @@ def load_answer(question, mink=15, maxk=30, mode='bert') -> Dict[str, Any]:
     return output
 
 
-def render_output_info(n_sents: int, n_papers: int) -> None:
-    # the actual totals
+def render_similar_sentences(sentences: List[str]) -> None:
+    st.markdown('### Similar Sentences')
+    st.markdown('---')
+    for sentence in sentences:
+        sentence = normalize_whitespace(sentence)
+        st.markdown(f'- {sentence}')
+
+
+def render_info(n_sents: int, n_papers: int) -> None:
     total_sentences, total_papers = N_SENTS, N_PAPERS
     about_output = (
         f"ℹ Answer based on ***{n_sents}***/{total_sentences} sentences "
@@ -203,10 +210,30 @@ def render_answer(question: str, output: dict) -> None:
             st.write('> ' + context)
 
 
+def hold_render_answer(sequence: str, output: Dict[str, str]) -> Callable:
+    def callable_render_answer() -> None:
+        """Callable with question and output input for rendering."""
+        render_answer(question=sequence, output=output)
+    return callable_render_answer
+
+
+def hold_render_info(n_sents: int, n_papers: int) -> Callable:
+    def callable_render_info() -> None:
+        """Callable with number of sentences and papers for rendering."""
+        render_info(n_sents=n_sents, n_papers=n_papers)
+    return callable_render_info
+
+
+def hold_render_similar_sentences(sentences: List[str]) -> Callable:
+    def callable_render_similar_sentences() -> None:
+        """Callable with sentences for rendering line by line."""
+        render_similar_sentences(sentences=sentences)
+    return callable_render_similar_sentences
+
+
 def main():
     # Render Head:
     main_app_head()
-
     # OPTION [1]: Select check-box to enable rendering of titles with outputs.
     render_titles = st.sidebar.checkbox("Render Article Titles and Links",
                                         value=False)
@@ -217,7 +244,6 @@ def main():
         desc_tts_value = True
         desc_tts = "Text to speech feature is currently not enabled."
     with_text_to_speech = st.sidebar.checkbox(desc_tts, value=desc_tts_value)
-
     # OPTION [3]: Select compression mode.
     st.sidebar.subheader('Context Compression')
     desc_compressor = (
@@ -230,7 +256,6 @@ def main():
         desc_compressor, options=("Embedding", "Frequency",),
     )
     compressor = 'freq' if compressor == "Frequency" else "bert"
-
     # OPTION [4]: Select number of k-nearest neighbors from slider.
     st.sidebar.header('K-Nearest Neighbors (K-NN)')
     desc_context = (
@@ -239,7 +264,6 @@ def main():
         'sentences to be answered by the question answering model)'
     )
     num_k_nearest_neighbors = st.sidebar.slider(desc_context, 5, 100, 25)
-
     # Cache the number of k-nearest neighbors.
     MIN_SENTS: int = num_k_nearest_neighbors
     # Cache a random max of k-nearest neighbors.
@@ -252,6 +276,10 @@ def main():
     TOPICS: List[str] = list(QKNN.keys())
     # Cache titles and urls for various outputs.
     TITLES_URLS: Dict[str, str] = None
+    # Callables for honding rendering calls for multiple outputs.
+    callable_render_output: Callable = st.empty()
+    callable_render_info: Callable = st.empty()
+    user_text_input = st.empty()
 
     # ------------------------------------------------------------------------
     # :::::::::::::::::::: (TOPICS) INPUT FROM SELECT-BOX ::::::::::::::::::::
@@ -264,17 +292,20 @@ def main():
     st.subheader("{cat} Related Questions".format(cat=topic_choice.title()))
     desc_entities = (f"🏷 this group of '{topic_choice}' questions has a "
                      f"relationship to the subsequent entities: {key_words}")
-    chosen_question = st.selectbox(desc_entities, questions, index=rand_idx)
+    user_text_input = st.selectbox(desc_entities, questions, index=rand_idx)
 
-    if chosen_question:
+    if user_text_input:
+        chosen_question = user_text_input
         output = cache_load_topic_answer(chosen_question,
                                          mink=MIN_SENTS,
                                          maxk=MAX_SENTS,
                                          mode=compressor)
-        render_answer(chosen_question, output)
+        callable_render_output = hold_render_answer(sequence=chosen_question,
+                                                    output=output)
         titles_and_urls = meta_reader.load_urls(output=output)
-        render_output_info(n_sents=output["n_sents"],
-                           n_papers=len(titles_and_urls))
+        nsents, npapers = output['n_sents'], len(titles_and_urls)
+        callable_render_info = hold_render_info(n_sents=nsents,
+                                                n_papers=npapers)
         TITLES_URLS = cache_load_output_titles(titles_and_urls)
         # If text-to-speech is enabled and selected load the audio file.
         if TTS_PORT is not None \
@@ -293,27 +324,25 @@ def main():
                         "the text entered in the box below.")
     sentence_similarity_mode = 'Sentence Similarity'
     question_answering_mode = 'Question Answering'
-    search_mode = st.sidebar.selectbox(
-        desc_search_mode, (question_answering_mode,
-                           sentence_similarity_mode,)
-    )
-    question_or_sentence_input = st.sidebar.text_area(
-        '💬 Type your question or sentence'
-    )
+    modes_tuple = tuple((sentence_similarity_mode, question_answering_mode,))
+    search_mode = st.sidebar.selectbox(desc_search_mode, modes_tuple)
+    user_text_input = st.sidebar.text_area('💬 Type your question or sentence')
 
-    if question_or_sentence_input:
+    if user_text_input:
+        question_or_sentence_input = user_text_input
         # Sentence Similarity Mode:
         if search_mode == sentence_similarity_mode:
             output = api.sentence_similarity(question_or_sentence_input,
                                              topk=MIN_SENTS)
             # Render similar sentences line by line.
             if output is not None:
-                for sentence in output['sents']:
-                    sentence = normalize_whitespace(sentence)
-                    st.markdown(f'- {sentence}')
+                callable_render_output = hold_render_similar_sentences(
+                    sentences=output['sents']
+                )
                 titles_and_urls = meta_reader.load_urls(output=output)
-                render_output_info(n_sents=output['n_sents'],
-                                   n_papers=len(titles_and_urls))
+                nsents, npapers = output['n_sents'], len(titles_and_urls)
+                callable_render_info = hold_render_info(n_sents=nsents,
+                                                        n_papers=npapers)
                 TITLES_URLS = cache_load_output_titles(titles_and_urls)
         # Question Answering Mode:
         elif search_mode == question_answering_mode:
@@ -326,14 +355,19 @@ def main():
                                          mink=MIN_SENTS,
                                          maxk=MAX_SENTS,
                                          mode=compressor)
-                    render_answer(question_or_sentence_input, output)
-                    titles_and_urls = meta_reader.load_urls(output=output)
-                    render_output_info(n_sents=output['n_sents'],
-                                       n_papers=len(titles_and_urls))
+                    callable_render_output = hold_render_answer(
+                        sequence=question_or_sentence_input, output=output)
+                    nsents, npapers = output['n_sents'], len(titles_and_urls)
+                    callable_render_info = hold_render_info(n_sents=nsents,
+                                                            n_papers=npapers)
                     TITLES_URLS = cache_load_output_titles(titles_and_urls)
             else:
                 st.sidebar.error(f'Text needs to be at least {min_valid_words}'
                                  f' words long, and not {num_valid_words}')
+
+    # Call the hold-rendering methods in sequence.
+    callable_render_output()
+    callable_render_info()
 
     # OPTION [1]: Render titles if option enabled for all modes.
     if render_titles:
