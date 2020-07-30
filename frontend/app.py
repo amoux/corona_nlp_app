@@ -36,7 +36,7 @@ meta_reader = MetadataReader(metadata_path=CORD19_METADATA,
                              source=CORD19_SOURCE)
 
 
-def main_app_welcome_text():
+def main_app_head():
     #  Inside a function to keep things clean in main.
     st.title('⚕ COVID-19')
     st.header('Semantic Question Answering System')
@@ -61,26 +61,81 @@ def main_app_welcome_text():
     st.sidebar.header('Settings')
 
 
+def main_app_body():
+    # SIDEBAR BOTTOM INFO:
+    st.sidebar.markdown('🗃 *The data for all outputs, questions, and links '
+                        'to the articles in this application is entirely from '
+                        'the CORD-19 dataset.*')
+    st.sidebar.markdown('---')
+    # Content displayed at the bottom of the page:
+    st.markdown('---')
+    st.markdown('#### Outputs based on the following:')
+    st.markdown(f'- dataset             : `{DATASET_VERSION}`')
+    st.markdown(f'- subsets             : `{SUBSETS}`')
+    st.markdown(f'- papers              : `{N_PAPERS:,.0f}`')
+    st.markdown(f'- text-source         : `{TEXT_SOURCE}`')
+    st.markdown(f'- embeddings/sentences: `{N_SENTS:,.0f}`')
+    st.markdown('Tool created by *Carlos Segura* for the '
+                '[COVID-19 Open Research Dataset Challenge]'
+                '(https://www.kaggle.com/allen-institute-for-ai/CORD-19-research-challenge)')
+    st.markdown('- download the question answering model used in this app:'
+                ' [scibert_nli_squad](https://huggingface.co/amoux/scibert_nli_squad)')
+    st.markdown('Github page: [amoux](https://github.com/amoux)')
+    st.markdown('Source code: [corona](https://github.com/amoux/corona)')
+    st.text(r'''
+        @inproceedings{Wang2020CORD19TC,
+      title={CORD-19: The Covid-19 Open Research Dataset},
+      author={Lucy Lu Wang and Kyle Lo and Yoganand Chandrasekhar and
+        Russell Reas and Jiangjiang Yang and Darrin Eide and Kathryn Funk
+        and Rodney Kinney and Ziyang Liu and William. Merrill and Paul
+        Mooney and Dewey A. Murdick and Devvret Rishi and Jerry Sheehan
+        and Zhihong Shen and Brandon Stilson and Alex D. Wade and Kuansan
+        Wang and Christopher Wilhelm and Boya Xie and Douglas M. Raymond
+        and Daniel S. Weld and Oren Etzioni and Sebastian Kohlmeier},
+      year={2020}
+    }
+    ''')
+
+
 @st.cache(allow_output_mutation=True)
-def load_task_clusters(file_name=QKNN_FILE):
+def cache_load_qknn_clusters(file_name=QKNN_FILE):
     tasks = DataIO.load_data(file_name)
     return tasks
 
 
 @st.cache
-def set_info_state(titles_and_urls):
-    titles_and_urls = titles_and_urls
-    return titles_and_urls
+def cache_load_output_titles(cache_object):
+    cache_object = cache_object
+    return cache_object
 
 
 @st.cache
-def load_questions(category: str,
-                   knnq: Dict[str, str]) -> Tuple[List[str], str, int]:
-    questions = knnq[category]['questions']
-    key_words = knnq[category]['key_words']
+def cache_load_topic_data(cat: str,
+                          knnq: Dict[str, str]) -> Tuple[List[str], str, int]:
+    questions = knnq[cat]['questions']
+    key_words = knnq[cat]['key_words']
     key_words = ', '.join(key_words)
-    random_id = random.choice(list(range(len(questions))))
-    return (questions, key_words, random_id)
+    rand_index = random.choice(list(range(len(questions))))
+    return (questions, key_words, rand_index)
+
+
+@st.cache
+def cache_load_answer(*args, **kwargs):
+    # TODO: Move method question_answering inside cache method.
+    pass
+
+
+@st.cache
+def cache_load_similar(*args, **kwargs):
+    # TODO: Move method sentence_similarity inside cache method.
+    pass
+
+
+@st.cache
+def cache_load_topic_answer(question, mink, maxk, mode):
+    """Cache and return the output answer for the selected topic question."""
+    output = load_answer(question, mink, maxk, mode)
+    return output
 
 
 def count_words(string, min_word_length=2) -> int:
@@ -123,7 +178,6 @@ def render_answer(question: str, output: dict) -> None:
     Q = f'**{question}**'
     A = "### 💡 Answer"
     C = "### ⚗ Context"
-
     if len(answer) == 0:
         st.markdown('### 📃 Summary')
         st.write("> ", context.replace(question, Q, 1))
@@ -150,163 +204,147 @@ def render_answer(question: str, output: dict) -> None:
 
 
 def main():
-    main_app_welcome_text()
-    SUBSET_INFO_STATE = None
+    # Render Head:
+    main_app_head()
+
+    # OPTION [1]: Select check-box to enable rendering of titles with outputs.
     render_titles = st.sidebar.checkbox("Render Article Titles and Links",
                                         value=False)
-
+    # OPTION [2]: Select check-box to enable text-to-speech for the context.
+    desc_tts_value = False
     desc_tts = "Enable text to speech for context outputs."
-    desc_tts_value = False  # False that is enabled.
-    if TTS_PORT is None:
+    if TTS_PORT is None:  # If not enabled let the user know that.
+        desc_tts_value = True
         desc_tts = "Text to speech feature is currently not enabled."
-        desc_tts_value = True  # True that is disabled.
-
     with_text_to_speech = st.sidebar.checkbox(desc_tts, value=desc_tts_value)
 
+    # OPTION [3]: Select compression mode.
     st.sidebar.subheader('Context Compression')
     desc_compressor = (
-        '⚗ Embedding - (Easy-to-read Context: 🥇🥇🥇); Allows for correct'
-        ' generalization of terms, also known as "semantic-compression". 📊'
-        ' Frequency - (Easy-to-read Context: 🥇); Topmost sentences scored '
+        '⚗ Embedding - (Easy-to-read Context: 🥇🥇🥇); Allows for correct '
+        'generalization of terms, also known as "semantic-compression". 📊 '
+        'Frequency - (Easy-to-read Context: 🥇); Topmost sentences scored '
         'based on basic word frequency.'
     )
-
     compressor = st.sidebar.selectbox(
-        desc_compressor,
-        options=("Embedding", "Frequency",),
+        desc_compressor, options=("Embedding", "Frequency",),
     )
-
     compressor = 'freq' if compressor == "Frequency" else "bert"
+
+    # OPTION [4]: Select number of k-nearest neighbors from slider.
     st.sidebar.header('K-Nearest Neighbors (K-NN)')
     desc_context = (
         'Explore how the answers improve based on the context '
-        'size. (Some questions might require less or more similar'
-        ' sentences to be answered by the question answering model)'
+        'size. (Some questions might require less or more similar '
+        'sentences to be answered by the question answering model)'
     )
+    num_k_nearest_neighbors = st.sidebar.slider(desc_context, 5, 100, 25)
 
-    MIN_SENTS = st.sidebar.slider(desc_context, 5, 100, 25)
-    MAX_SENTS = powerup(MIN_SENTS, rate=3.7)
-    KNNQ = load_task_clusters()
-    KNNQ_INDEX = 4
+    # Cache the number of k-nearest neighbors.
+    MIN_SENTS: int = num_k_nearest_neighbors
+    # Cache a random max of k-nearest neighbors.
+    MAX_SENTS: int = powerup(MIN_SENTS, rate=3.7)
+    # Cache the clustered questions/topics dict object.
+    QKNN: Dict[str, Dict[str, List[str]]] = cache_load_qknn_clusters()
+    # Display this topics at index [n] first.
+    TOPIC_INDEX: int = 4
+    # An list of topic/category items.
+    TOPICS: List[str] = list(QKNN.keys())
+    # Cache titles and urls for various outputs.
+    TITLES_URLS: Dict[str, str] = None
 
-    k_categories = list(KNNQ.keys())
-    selected_cat = st.selectbox(
-        '🧬 Select a Topic', k_categories, index=KNNQ_INDEX).lower()
+    # ------------------------------------------------------------------------
+    # :::::::::::::::::::: (TOPICS) INPUT FROM SELECT-BOX ::::::::::::::::::::
+    # ------------------------------------------------------------------------
 
-    st.subheader(f"{selected_cat.title()} Related Questions")
-    desc_entities = (
-        f"🏷 this group of '{selected_cat}' questions"
-        " has a relationship to the subsequent entities"
-    )
+    topic_choice = st.selectbox('🧬 Select a Topic', TOPICS, index=TOPIC_INDEX)
+    topic_choice = topic_choice.lower()
+    # Load the questions and key-words from the selected category.
+    questions, key_words, rand_idx = cache_load_topic_data(topic_choice, QKNN)
+    st.subheader("{cat} Related Questions".format(cat=topic_choice.title()))
+    desc_entities = (f"🏷 this group of '{topic_choice}' questions has a "
+                     f"relationship to the subsequent entities: {key_words}")
+    chosen_question = st.selectbox(desc_entities, questions, index=rand_idx)
 
-    questions, key_words, random_id = load_questions(selected_cat, knnq=KNNQ)
-    chosen_question = st.selectbox(f"{desc_entities}: {key_words}",
-                                   questions, index=random_id)
     if chosen_question:
-        output = load_answer(chosen_question,
-                             mink=MIN_SENTS,
-                             maxk=MAX_SENTS,
-                             mode=compressor)
-
+        output = cache_load_topic_answer(chosen_question,
+                                         mink=MIN_SENTS,
+                                         maxk=MAX_SENTS,
+                                         mode=compressor)
         render_answer(chosen_question, output)
-        titles_and_urls = meta_reader.load_urls(output)
+        titles_and_urls = meta_reader.load_urls(output=output)
         render_output_info(n_sents=output["n_sents"],
                            n_papers=len(titles_and_urls))
-        SUBSET_INFO_STATE = set_info_state(titles_and_urls)
-
+        TITLES_URLS = cache_load_output_titles(titles_and_urls)
+        # If text-to-speech is enabled and selected load the audio file.
         if TTS_PORT is not None \
                 and isinstance(TTS_PORT, int) and with_text_to_speech:
             audiofile = api.text_to_speech(text=output['context'],
                                            prob=0.99, port=TTS_PORT)
-            if audiofile:
+            if audiofile is not None:
                 st.audio(audiofile['audio_file_path'], format='audio/wav')
 
-    sentence_mode = 'Sentence Similarity'
+    # ------------------------------------------------------------------------
+    # :::::::::::::::::::: (SEARCH) INPUT FROM TEXT-AREA :::::::::::::::::::::
+    # ------------------------------------------------------------------------
+
     st.sidebar.subheader('Search Mode')
-    desc_search_mode = (
-        "Sentence-similarity works only when"
-        " the text entered in the box below."
-    )
-
+    desc_search_mode = ("Sentence-similarity works only when "
+                        "the text entered in the box below.")
+    sentence_similarity_mode = 'Sentence Similarity'
+    question_answering_mode = 'Question Answering'
     search_mode = st.sidebar.selectbox(
-        desc_search_mode,
-        ('Question Answering', sentence_mode,),
+        desc_search_mode, (question_answering_mode,
+                           sentence_similarity_mode,)
+    )
+    question_or_sentence_input = st.sidebar.text_area(
+        '💬 Type your question or sentence'
     )
 
-    question = st.sidebar.text_area('💬 Type your question or sentence')
-    if question:
-        if search_mode == sentence_mode:
-            output = api.sentence_similarity(question, topk=MIN_SENTS)
-            if output:  # Render sentences line by line:
+    if question_or_sentence_input:
+        # Sentence Similarity Mode:
+        if search_mode == sentence_similarity_mode:
+            output = api.sentence_similarity(question_or_sentence_input,
+                                             topk=MIN_SENTS)
+            # Render similar sentences line by line.
+            if output is not None:
                 for sentence in output['sents']:
                     sentence = normalize_whitespace(sentence)
                     st.markdown(f'- {sentence}')
-
-                titles_and_urls = meta_reader.load_urls(output)
+                titles_and_urls = meta_reader.load_urls(output=output)
                 render_output_info(n_sents=output['n_sents'],
                                    n_papers=len(titles_and_urls))
-                SUBSET_INFO_STATE = set_info_state(titles_and_urls)
-        else:
+                TITLES_URLS = cache_load_output_titles(titles_and_urls)
+        # Question Answering Mode:
+        elif search_mode == question_answering_mode:
             min_valid_words = 4  # Minimum number of words to consider valid.
-            num_valid_words = count_words(question, min_word_length=2)
+            num_valid_words = count_words(string=question_or_sentence_input,
+                                          min_word_length=2)
             if num_valid_words >= min_valid_words:
                 with st.spinner("'Fetching results..."):
-                    output = load_answer(question,
+                    output = load_answer(question_or_sentence_input,
                                          mink=MIN_SENTS,
                                          maxk=MAX_SENTS,
                                          mode=compressor)
-
-                    render_answer(question, output)
-                    titles_and_urls = meta_reader.load_urls(output)
+                    render_answer(question_or_sentence_input, output)
+                    titles_and_urls = meta_reader.load_urls(output=output)
                     render_output_info(n_sents=output['n_sents'],
                                        n_papers=len(titles_and_urls))
-                    SUBSET_INFO_STATE = set_info_state(titles_and_urls)
+                    TITLES_URLS = cache_load_output_titles(titles_and_urls)
             else:
-                st.sidebar.error(
-                    f'A question needs to be at least {min_valid_words}'
-                    f' words long, not {num_valid_words}'
-                )
+                st.sidebar.error(f'Text needs to be at least {min_valid_words}'
+                                 f' words long, and not {num_valid_words}')
 
+    # OPTION [1]: Render titles if option enabled for all modes.
     if render_titles:
-        if SUBSET_INFO_STATE is not None:
-            for key in SUBSET_INFO_STATE:
+        if TITLES_URLS is not None:
+            for key in TITLES_URLS:
                 title, url = key['title'], key['url']
                 st.markdown(f"- [{title}]({url})")
             st.sidebar.markdown('---')
 
-    # SIDEBAR BOTTOM INFO:
-    st.sidebar.markdown('🗃 *The data for all outputs, questions, and links '
-                        'to the articles in this application is entirely from '
-                        'the CORD-19 dataset.*')
-    st.sidebar.markdown('---')
-    # Content displayed at the bottom of the page:
-    st.markdown('---')
-    st.markdown('#### Outputs based on the following:')
-    st.markdown(f'- dataset             : `{DATASET_VERSION}`')
-    st.markdown(f'- subsets             : `{SUBSETS}`')
-    st.markdown(f'- papers              : `{N_PAPERS:,.0f}`')
-    st.markdown(f'- text-source         : `{TEXT_SOURCE}`')
-    st.markdown(f'- embeddings/sentences: `{N_SENTS:,.0f}`')
-    st.markdown('Tool created by *Carlos Segura* for the '
-                '[COVID-19 Open Research Dataset Challenge]'
-                '(https://www.kaggle.com/allen-institute-for-ai/CORD-19-research-challenge)')
-    st.markdown('- download the question answering model used in this app:'
-                ' [scibert_nli_squad](https://huggingface.co/amoux/scibert_nli_squad)')
-    st.markdown('Github page: [amoux](https://github.com/amoux)')
-    st.markdown('Source code: [corona](https://github.com/amoux/corona)')
-    st.text(r'''
-        @inproceedings{Wang2020CORD19TC,
-      title={CORD-19: The Covid-19 Open Research Dataset},
-      author={Lucy Lu Wang and Kyle Lo and Yoganand Chandrasekhar and
-        Russell Reas and Jiangjiang Yang and Darrin Eide and Kathryn Funk
-        and Rodney Kinney and Ziyang Liu and William. Merrill and Paul
-        Mooney and Dewey A. Murdick and Devvret Rishi and Jerry Sheehan
-        and Zhihong Shen and Brandon Stilson and Alex D. Wade and Kuansan
-        Wang and Christopher Wilhelm and Boya Xie and Douglas M. Raymond
-        and Daniel S. Weld and Oren Etzioni and Sebastian Kohlmeier},
-      year={2020}
-    }
-    ''')
+    # Render body:
+    main_app_body()
 
 
 if __name__ == '__main__':

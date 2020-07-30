@@ -27,7 +27,7 @@ num_sentences = 598839
 text_source = "body_text"
 subsets = [ "biorxiv_medrxiv", "noncomm_use_subset", "comm_use_subset", "pmc_custom_license",]
 dataset_version = "2020-03-13"
-qknn_file = ""
+qknn_file = "/home/ego/Github/corona_nlp_app/src/QKNN.pkl"
 
 [tts]
 port = false
