@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -12,16 +12,16 @@ class QuestionAnsweringBase(BaseModel):
 
 
 class QuestionAnsweringInput(QuestionAnsweringBase):
-    mink: int = 15
-    maxk: int = 30
+    topk: int = 5
+    top_p: int = 25
     mode: str = 'bert'
-    nprobe: int = 4
+    nprobe: int = 64
 
 
 class QuestionAnsweringOutput(QuestionAnsweringBase):
     answer: str
     context: str
-    n_sents: int
+    num_sents: int
     titles: List[str]
     paper_ids: List[int]
 
@@ -36,13 +36,13 @@ class QuestionAnsweringWithContextOutput(BaseModel):
 
 
 class SentenceSimilarityInput(BaseModel):
-    sentence: str
-    topk: Optional[int] = 5
+    text: Union[str, List[str]]
+    top_p: Optional[int] = 5
     nprobe: Optional[int] = 1
 
 
 class SentenceSimilarityOutput(BaseModel):
-    n_sents: int
+    num_sents: int
     sents: List[str]
     dists: List[float]
     paper_ids: List[int]

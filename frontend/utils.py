@@ -1,13 +1,15 @@
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from string import punctuation
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 import requests
-import spacy
 import toml
-from corona_nlp.dataset import CORD19Dataset
-from spacy import displacy
+from corona_nlp.dataset import (CORD19Dataset, clean_tokenization,
+                                normalize_whitespace)
+
+APIOutput = Union[Dict[str, Any], None]
 
 REGX_URL = r"(((http|https)\:\/\/www\.)|((http|https)\:\/\/))|((http|https)\/{1,2})"
 
@@ -18,110 +20,81 @@ def app_config(toml_config: str = './config.toml') -> Dict[str, Any]:
     return config_dict
 
 
-def render(question: str, prediction: Dict[str, str], jupyter=True,
-           return_html=False, style="ent", manual=True, label='ANSWER'):
-    """Spacy displaCy visualization util for the question answering model."""
-    options = {"compact": True, "bg": "#ed7118", "color": '#000000'}
-    display_data = {}
-    start, end = 0, 0
-    match = re.search(prediction["answer"], prediction["context"])
-    if match and match.span() is not None:
-        start, end = match.span()
-
-    display_data["ents"] = [{'start': start, 'end': end, 'label': label}]
-    options['ents'] = [label]
-    options['colors'] = {label: "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}
-    if len(prediction['context']) > 1:
-        display_data['text'] = prediction['context']
-
-    display_data['title'] = f'Q : {question}\n'
-    if return_html:
-        return displacy.render([display_data], style=style,
-                               jupyter=False, options=options, manual=manual)
-    else:
-        displacy.render([display_data], style=style,
-                        page=False, minify=True,
-                        jupyter=jupyter, options=options, manual=manual)
+def count_words(string, min_word_length=2) -> int:
+    tokens = clean_tokenization(normalize_whitespace(string)).split()
+    words = ["".join([char for char in token if char not in punctuation])
+             for token in tokens if len(token) > min_word_length]
+    return len(words)
 
 
 class ModelAPI:
-    url = "http://{}:{}/{}"
+    endpoints = {
+        'answer': 'question/',
+        'context': 'question-with-context/',
+        'similar': 'sentence-similarity/',
+        'tts': 'text-to-speech/',
+        'meta': 'engine-meta/',
+    }
 
     def __init__(self, port: Union[str, int], ip: str = "127.0.0.1"):
-        if isinstance(port, int):
-            port = str(port)
-        self.port = port
-        self.url = self.url.format(ip, "{port}", "{endpoint}",)
+        self.port = str(port) if isinstance(port, int) else port
+        self.url = 'http://{}:{}'.format(ip, "{port}/{endpoint}")
 
-    def engine_meta(self, port: Optional[int] = None) -> Dict[str, Tuple[Any, ...]]:
-        request_url = self.url.format(
-            port=port if port is not None else self.port,
-            endpoint='engine-meta/'
-        )
-        response = requests.get(request_url)
+    def okay(self, endpoint: str, inputs=None, port=None):
+        port = self.port if port is None else port
+        endpoint = self.url.format(port=port, endpoint=endpoint)
+        response = requests.get(endpoint) if inputs is None \
+            else requests.post(endpoint, json=inputs)
+        return response
+
+    def meta(self, port=None) -> APIOutput:
+        endpoint = self.endpoints['meta']
+        response = self.okay(endpoint, port=port)
         if response.status_code == 200:
             return response.json()
+        return None
 
-    def question_answering(self,
-                           question: str,
-                           context: Optional[str] = None,
-                           mink: int = 15,
-                           maxk: int = 30,
-                           mode: str = "bert",
-                           nprobe: int = 1,
-                           port: Optional[int] = None) -> Dict[str, Any]:
+    def answer(self, question: str, topk=15, top_p=30, nprobe=64, mode='bert',
+               context: Optional[str] = None, port=None) -> APIOutput:
         """Return the predicted answer given the question and k-theresholds."""
-        input_dict, endpoint = {"question": question}, "question/"
+        endpoint = None
+        inputs = {'question': question}
+
         if context is not None and isinstance(context, str):
-            endpoint = "question-with-context/"
-            input_dict.update({"context": context})
+            endpoint = self.endpoints['context']
+            inputs.update({'context': context})
         else:
-            input_dict.update({
-                "mink": mink,
-                "maxk": maxk,
-                "mode": mode,
-                "nprobe": nprobe
-            })
-        request_url = self.url.format(
-            port=port if port is not None else self.port,
-            endpoint=endpoint
-        )
-        response = requests.post(request_url, json=input_dict)
+            endpoint = self.endpoints['answer']
+            inputs.update({'topk': topk, 'top_p': top_p,
+                           'nprobe': nprobe, 'mode': mode})
+
+        response = self.okay(endpoint, inputs=inputs, port=port)
         if response.status_code == 200:
             return response.json()
+        return None
 
-    def sentence_similarity(self,
-                            sentence: str,
-                            topk: int = 5,
-                            nprobe: int = 1,
-                            port: Optional[int] = None) -> Dict[str, Any]:
-        """Return top-k nearest sentences given a single sentence sequence."""
-        request_url = self.url.format(
-            port=port if port is not None else self.port,
-            endpoint="sentence-similarity/"
-        )
-        input_dict = {
-            'sentence': sentence,
-            'topk': topk,
-            'nprobe': nprobe
-        }
-        response = requests.post(request_url, json=input_dict)
+    def similar(
+        self, text: Union[str, List[str]], top_p=5, nprobe=64, port=None,
+    ) -> APIOutput:
+        """Return top-k nearest sentences given a single sentence sequence.
+
+        :param sentence: A single string sequence or a list of strings.
+        """
+        endpoint = self.endpoints['similar']
+        inputs = {'text': text, 'top_p': top_p, 'nprobe': nprobe}
+        response = self.okay(endpoint, inputs=inputs, port=port)
         if response.status_code == 200:
             return response.json()
+        return None
 
-    def text_to_speech(self,
-                       text: str,
-                       prob: float = 0.99,
-                       port: Optional[int] = None) -> Dict[str, str]:
+    def tts(self, text: str, prob=0.99, port=None) -> APIOutput:
         """Return the file path of the synthesized text to audio of speech."""
-        request_url = self.url.format(
-            port=port if port is not None else self.port,
-            endpoint='text-to-speech/'
-        )
-        input_dict = {'text': text, 'prob': prob}
-        response = requests.post(request_url, json=input_dict)
+        endpoint = self.endpoints['tts']
+        inputs = {'text': text, 'prob': prob}
+        response = self.okay(endpoint, inputs=inputs, port=port)
         if response.status_code == 200:
             return response.json()
+        return None
 
 
 class MetadataReader(CORD19Dataset):

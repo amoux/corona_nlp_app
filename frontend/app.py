@@ -1,21 +1,29 @@
 import random
 import re
-from string import punctuation
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import requests
 import streamlit as st
 from corona_nlp.utils import DataIO, clean_tokenization, normalize_whitespace
 
-from utils import MetadataReader, ModelAPI, app_config
+from info import main_app_body, main_app_head
+from utils import MetadataReader, ModelAPI, app_config, count_words
+
+# Application specific parameters:
+# slider (min, max, default)
+TOPK_CONFIG = (1, 10, 5)
+TOP_P_CONFIG = (5, 100, 25)
+# minimum number of words to consider valid
+MIN_VALID_WORDS = 4
+# topic index to user at user welcome screen
+TOPIC_INDEX = 4
 
 config = app_config()
 # Information related to the dataset and number of samples.
-N_PAPERS = config['streamlit']['num_papers']
-N_SENTS = config['streamlit']['num_sentences']
+NUM_PAPERS = config['streamlit']['num_papers']
+NUM_SENTS = config['streamlit']['num_sentences']
 SUBSETS = ', '.join([f'`{s}`' for s in config['streamlit']['subsets']])
 DATASET_VERSION = config['streamlit']['dataset_version']
-TEXT_SOURCE = config['streamlit']['text_source']
+TEXT_KEYS = config['streamlit']['text_source']
 # Data sources for the application's content.
 CORD19_SOURCE = config['cord']['source']
 CORD19_METADATA = config['cord']['metadata']
@@ -32,86 +40,21 @@ if config['streamlit']['enable_tts']:
 
 
 api = ModelAPI(port=BACKEND_PORT)
-meta_reader = MetadataReader(metadata_path=CORD19_METADATA,
-                             source=CORD19_SOURCE)
-
-
-def main_app_head():
-    #  Inside a function to keep things clean in main.
-    st.title('⚕ COVID-19')
-    st.header('Semantic Question Answering System')
-    st.sidebar.title('Built with state-of-the-art Transformer models 🤗')
-    st.sidebar.markdown("> The CORD-19 dataset represents the most extensive "
-                        "machine-readable coronavirus literature collection "
-                        "available for data mining to date")
-    st.markdown('> Use this as a tool to search and explore `COVID-19` '
-                'research literature with natural language.')
-    st.markdown('- Open the sidebar **>** (↖ *top-left*) to enter a'
-                ' question or choose a question based on one of the topics'
-                ' below to get started.')
-    st.markdown('---')
-    st.markdown('*Questions extracted from the literature, sorted'
-                ' based on similarity and grouped via clustering*.')
-    st.sidebar.markdown('---')
-    st.sidebar.title('Say Something to Coronavirus Literature')
-    st.sidebar.markdown('- Articulating to it in sentences will '
-                        'usually produce better results than keywords.')
-    st.sidebar.markdown('- The model is case sensitive. Indicating that '
-                        'upper/lower case letters affect the "meaning".')
-    st.sidebar.header('Settings')
-
-
-def main_app_body():
-    # SIDEBAR BOTTOM INFO:
-    st.sidebar.markdown('🗃 *The data for all outputs, questions, and links '
-                        'to the articles in this application is entirely from '
-                        'the CORD-19 dataset.*')
-    st.sidebar.markdown('---')
-    # Content displayed at the bottom of the page:
-    st.markdown('---')
-    st.markdown('#### Outputs based on the following:')
-    st.markdown(f'- dataset             : `{DATASET_VERSION}`')
-    st.markdown(f'- subsets             : `{SUBSETS}`')
-    st.markdown(f'- papers              : `{N_PAPERS:,.0f}`')
-    st.markdown(f'- text-source         : `{TEXT_SOURCE}`')
-    st.markdown(f'- embeddings/sentences: `{N_SENTS:,.0f}`')
-    st.markdown('Tool created by *Carlos Segura* for the '
-                '[COVID-19 Open Research Dataset Challenge]'
-                '(https://www.kaggle.com/allen-institute-for-ai/CORD-19-research-challenge)')
-    st.markdown('- download the question answering model used in this app:'
-                ' [scibert_nli_squad](https://huggingface.co/amoux/scibert_nli_squad)')
-    st.markdown('Github page: [amoux](https://github.com/amoux)')
-    st.markdown('Source code: [corona](https://github.com/amoux/corona)')
-    st.text(r'''
-        @inproceedings{Wang2020CORD19TC,
-      title={CORD-19: The Covid-19 Open Research Dataset},
-      author={Lucy Lu Wang and Kyle Lo and Yoganand Chandrasekhar and
-        Russell Reas and Jiangjiang Yang and Darrin Eide and Kathryn Funk
-        and Rodney Kinney and Ziyang Liu and William. Merrill and Paul
-        Mooney and Dewey A. Murdick and Devvret Rishi and Jerry Sheehan
-        and Zhihong Shen and Brandon Stilson and Alex D. Wade and Kuansan
-        Wang and Christopher Wilhelm and Boya Xie and Douglas M. Raymond
-        and Daniel S. Weld and Oren Etzioni and Sebastian Kohlmeier},
-      year={2020}
-    }
-    ''')
+meta_reader = MetadataReader(
+    metadata_path=CORD19_METADATA,
+    source=CORD19_SOURCE,
+)
 
 
 @st.cache(allow_output_mutation=True)
-def cache_load_qknn_clusters(file_name=QKNN_FILE):
+def cache_qknn_topics(file_name=QKNN_FILE):
     tasks = DataIO.load_data(file_name)
     return tasks
 
 
 @st.cache
-def cache_load_output_titles(cache_object):
-    cache_object = cache_object
-    return cache_object
-
-
-@st.cache
-def cache_load_topic_data(cat: str,
-                          knnq: Dict[str, str]) -> Tuple[List[str], str, int]:
+def cache_topic_data(cat: str, knnq: Dict[str, str],
+                     ) -> Tuple[List[str], str, int]:
     questions = knnq[cat]['questions']
     key_words = knnq[cat]['key_words']
     key_words = ', '.join(key_words)
@@ -119,266 +62,203 @@ def cache_load_topic_data(cat: str,
     return (questions, key_words, rand_index)
 
 
-@st.cache
-def cache_load_answer(*args, **kwargs):
-    # TODO: Move method question_answering inside cache method.
-    pass
-
-
-@st.cache
-def cache_load_similar(*args, **kwargs):
-    # TODO: Move method sentence_similarity inside cache method.
-    pass
-
-
-@st.cache
-def cache_load_topic_answer(question, mink, maxk, mode):
+@st.cache(allow_output_mutation=True)
+def cache_api_answer(question, topk, top_p, mode):
     """Cache and return the output answer for the selected topic question."""
-    output = load_answer(question, mink, maxk, mode)
+    output = api.answer(question, topk=topk, top_p=top_p, mode=mode)
     return output
 
 
-def count_words(string, min_word_length=2) -> int:
-    tokens = clean_tokenization(normalize_whitespace(string)).split()
-    words = ["".join([char for char in token if char not in punctuation])
-             for token in tokens if len(token) > min_word_length]
-    return len(words)
+def render_answer(question: str, output: Dict[str, Any]) -> Callable:
+    def function(question=question, output=output):
+        st.success("Done!")
+        question = normalize_whitespace(question)
+        answer = clean_tokenization(output['answer'])
+        context = clean_tokenization(output['context'])
 
+        # markdown template formats:
+        highlight, bold = '`{}`', '**{}**'
+        answer_title_md = '### 💡 Answer'
+        context_title_md = '### ⚗ Context'
+        summary_title_md = '### 📃 Summary'
 
-def powerup(k: int, rate=2.5) -> int:
-    return round(((k * rate) / 2) + k)
-
-
-def load_answer(question, mink=15, maxk=30, mode='bert') -> Dict[str, Any]:
-    output = api.question_answering(question, mink=mink, maxk=maxk, mode=mode)
-    if output:
-        if len(output['answer'].strip()) == 0:
-            maxk = powerup(mink)
-            output = api.question_answering(
-                question, mink=mink, maxk=maxk, mode=mode)
-    return output
-
-
-def render_similar_sentences(sentences: List[str]) -> None:
-    st.markdown('### Similar Sentences')
-    st.markdown('---')
-    for sentence in sentences:
-        sentence = normalize_whitespace(sentence)
-        st.markdown(f'- {sentence}')
-
-
-def render_info(n_sents: int, n_papers: int) -> None:
-    total_sentences, total_papers = N_SENTS, N_PAPERS
-    about_output = (
-        f"ℹ Answer based on ***{n_sents}***/{total_sentences} sentences "
-        f"obtained from ***{n_papers}***/{total_papers} unique papers:")
-    st.markdown('---')
-    st.markdown(about_output)
-
-
-def render_answer(question: str, output: dict) -> None:
-    st.success("Done!")
-    question = normalize_whitespace(question)
-    answer = clean_tokenization(output["answer"])
-    context = clean_tokenization(output["context"])
-    # Main markdown labels for the outputs.
-    Q = f'**{question}**'
-    A = "### 💡 Answer"
-    C = "### ⚗ Context"
-    if len(answer) == 0:
-        st.markdown('### 📃 Summary')
-        st.write("> ", context.replace(question, Q, 1))
-    else:
-        try:
-            # Search the answer in the context for highlighting.
-            match = re.search(answer, context)
-            start, end = match.span()
-        except Exception:
-            # Failed to highlight the answer in the context.
-            st.markdown(A)
-            st.write('> ', answer.capitalize())
-            st.markdown(C)
-            context = context.replace(question, Q, 1)
-            st.write('> ' + context.replace(answer, f'`{answer}`', -1))
+        if len(answer) == 0:
+            st.markdown(summary_title_md)
+            question_md = bold.format(question)
+            st.write('> ', context.replace(question, question_md, 1))
         else:
-            # Highlight the answer found in the context.
-            st.markdown(A)
-            st.write('>', answer.capitalize())
-            st.markdown(C)
-            context = context.replace(question, Q, 1)
-            context = context.replace(answer, f'`{answer}`', -1)
-            st.write('> ' + context)
+            try:
+                match = re.search(answer, context)
+                match.span()
+            except Exception as e:
+                print(f'Match generated an exception for {answer}: {e}')
+                pass
+            finally:
+                st.markdown(answer_title_md)
+                st.write('> ', answer.capitalize())
+                st.markdown(context_title_md)
+                context = context.replace(answer, highlight.format(answer), -1)
+                if not question.endswith('?'):
+                    question = f'{question}?'
+                question = bold.format(question)
+                context = question.strip() + "  " + context.strip()
+                st.write('> ', context)
+    return function
 
 
-def hold_render_answer(sequence: str, output: Dict[str, str]) -> Callable:
-    def callable_render_answer() -> None:
-        """Callable with question and output input for rendering."""
-        render_answer(question=sequence, output=output)
-    return callable_render_answer
+def render_about(output: Dict[str, Any]) -> Callable:
+    def function(output=output):
+        nsents, npapers = output['num_sents'], output['num_papers']
+        out1 = f'Answer based on {NUM_SENTS}/***{nsents}*** sentences '
+        out2 = f'obtained from {NUM_PAPERS}/***{npapers}*** papers:'
+        st.markdown('---')
+        st.markdown(out1 + out2)
+    return function
 
 
-def hold_render_info(n_sents: int, n_papers: int) -> Callable:
-    def callable_render_info() -> None:
-        """Callable with number of sentences and papers for rendering."""
-        render_info(n_sents=n_sents, n_papers=n_papers)
-    return callable_render_info
+def render_similar(sents: List[str]) -> Callable:
+    def function(sents=sents):
+        st.markdown('### Similar Sentences')
+        st.markdown('---')
+        for sequence in sents:
+            sequence = normalize_whitespace(sequence)
+            st.markdown(f'- {sequence}')
+    return function
 
 
-def hold_render_similar_sentences(sentences: List[str]) -> Callable:
-    def callable_render_similar_sentences() -> None:
-        """Callable with sentences for rendering line by line."""
-        render_similar_sentences(sentences=sentences)
-    return callable_render_similar_sentences
+def render_titles_urls(titles_urls) -> Callable:
+    def function(titles_urls=titles_urls):
+        for key in titles_urls:
+            title, url = key['title'], key['url']
+            st.markdown(f"- [{title}]({url})")
+            st.sidebar.markdown('---')
+    return function
+
+
+def init(session, text, topk, top_p, mode, with_text_to_speech=False):
+    output_fn, about_fn, titles_urls_fn = None, None, None
+
+    if session == 'SentenceSimilarity':
+        output = api.similar(text, top_p=top_p)
+        if output is not None:
+            # render similar sentences line by line.
+            output_fn = render_similar(output['sents'])
+            titles_urls = meta_reader.load_urls(output['paper_ids'])
+            output.update({'num_papers': len(titles_urls)})
+            about_fn = render_about(output)
+            titles_urls_fn = render_titles_urls(titles_urls)
+
+    elif session == 'QuestionAnswering':
+        output = api.answer(text, topk=topk, top_p=top_p, mode=mode)
+        num_words = count_words(text, min_word_length=2)
+        if output is not None and num_words >= MIN_VALID_WORDS:
+            with st.spinner("'Fetching results..."):
+                output_fn = render_answer(text, output)
+                titles_urls = meta_reader.load_urls(output['paper_ids'])
+                output.update({'num_papers': len(titles_urls)})
+                about_fn = render_about(output)
+                titles_urls_fn = render_titles_urls(titles_urls)
+        else:
+            st.sidebar.error(
+                f'Text needs to be at least {MIN_VALID_WORDS}'
+                f' words long, and not {num_words}')
+
+    elif session == 'Demo':
+        output = cache_api_answer(text, topk, top_p, mode)
+        output_fn = render_answer(text, output)
+        titles_urls = meta_reader.load_urls(output['paper_ids'])
+        output.update({'num_papers': len(titles_urls)})
+        about_fn = render_about(output)
+        titles_urls_fn = render_titles_urls(titles_urls)
+
+        if TTS_PORT is not None and with_text_to_speech:
+            audio = api.tts(output['context'], prob=0.99, port=TTS_PORT)
+            if audio is not None:
+                fp = audio['audio_file_path']
+                st.audio(fp, format='audio/wav')
+
+    return output_fn, about_fn, titles_urls_fn
 
 
 def main():
-    # Render Head:
-    main_app_head()
-    # OPTION [1]: Select check-box to enable rendering of titles with outputs.
-    render_titles = st.sidebar.checkbox("Render Article Titles and Links",
-                                        value=False)
-    # OPTION [2]: Select check-box to enable text-to-speech for the context.
-    desc_tts_value = False
-    desc_tts = "Enable text to speech for context outputs."
+    main_app_head(st)
+
+    TEXT = st.empty()
+    renderOnOutput: Callable = st.empty()
+    renderOnAbout: Callable = st.empty()
+    renderOnTitlesUrls: Callable = st.empty()
+
+    # OPTION 1: Select check-box to enable rendering of titles with outputs.
+    is_render_titles_checked = st.sidebar.checkbox(
+        "Render Article Titles and Links", value=False,
+    )
+
+    # OPTION 2: Select check-box to enable text-to-speech for the context.
+    tts_bool_value = False
+    info_tts = "Enable text to speech for context outputs."
     if TTS_PORT is None:  # If not enabled let the user know that.
-        desc_tts_value = True
-        desc_tts = "Text to speech feature is currently not enabled."
-    with_text_to_speech = st.sidebar.checkbox(desc_tts, value=desc_tts_value)
-    # OPTION [3]: Select compression mode.
+        tts_bool_value = True
+        info_tts = "Text to speech feature is currently not enabled."
+    is_tts_checked = st.sidebar.checkbox(info_tts, value=tts_bool_value)
+
+    # OPTION 3: Select compression mode.
     st.sidebar.subheader('Context Compression')
-    desc_compressor = (
-        '⚗ Embedding - (Easy-to-read Context: 🥇🥇🥇); Allows for correct '
+    info_mode = (
+        '⚗ BERT - (Easy-to-read Context: 🥇🥇🥇); Allows for correct '
         'generalization of terms, also known as "semantic-compression". 📊 '
         'Frequency - (Easy-to-read Context: 🥇); Topmost sentences scored '
         'based on basic word frequency.'
     )
-    compressor = st.sidebar.selectbox(
-        desc_compressor, options=("Embedding", "Frequency",),
-    )
-    compressor = 'freq' if compressor == "Frequency" else "bert"
-    # OPTION [4]: Select number of k-nearest neighbors from slider.
-    st.sidebar.header('K-Nearest Neighbors (K-NN)')
-    desc_context = (
-        'Explore how the answers improve based on the context '
-        'size. (Some questions might require less or more similar '
-        'sentences to be answered by the question answering model)'
-    )
-    num_k_nearest_neighbors = st.sidebar.slider(desc_context, 5, 100, 25)
-    # Cache the number of k-nearest neighbors.
-    MIN_SENTS: int = num_k_nearest_neighbors
-    # Cache a random max of k-nearest neighbors.
-    MAX_SENTS: int = powerup(MIN_SENTS, rate=3.7)
-    # Cache the clustered questions/topics dict object.
-    QKNN: Dict[str, Dict[str, List[str]]] = cache_load_qknn_clusters()
-    # Display this topics at index [n] first.
-    TOPIC_INDEX: int = 4
-    # An list of topic/category items.
-    TOPICS: List[str] = list(QKNN.keys())
-    # Cache titles and urls for various outputs.
-    TITLES_URLS: Dict[str, str] = None
-    # Callables for honding rendering calls for multiple outputs.
-    callable_render_output: Callable = st.empty()
-    callable_render_info: Callable = st.empty()
-    user_text_input = st.empty()
+    compression_modes = ('BERT', 'Frequency')
+    mode = st.sidebar.selectbox(info_mode, compression_modes).lower()
+    mode_selected = 'freq' if mode != 'bert' else 'bert'
 
-    # ------------------------------------------------------------------------
-    # :::::::::::::::::::: (TOPICS) INPUT FROM SELECT-BOX ::::::::::::::::::::
-    # ------------------------------------------------------------------------
+    # OPTION 4: Select number of k-nearest neighbors from slider.
+    st.sidebar.header('TopK & TopP')
+    k, p = TOPK_CONFIG, TOP_P_CONFIG
+    topk = st.sidebar.slider('number of answers', k[0], k[1], k[2])
+    top_p = st.sidebar.slider('size of context', p[0], p[1], p[2])
 
-    topic_choice = st.selectbox('🧬 Select a Topic', TOPICS, index=TOPIC_INDEX)
-    topic_choice = topic_choice.lower()
-    # Load the questions and key-words from the selected category.
-    questions, key_words, rand_idx = cache_load_topic_data(topic_choice, QKNN)
-    st.subheader("{cat} Related Questions".format(cat=topic_choice.title()))
-    desc_entities = (f"🏷 this group of '{topic_choice}' questions has a "
+    # Welcome screen (Displays the topics for the demo).
+    qknn = cache_qknn_topics()
+    topics = list(qknn.keys())
+    topic = st.selectbox('🧬 Select a Topic', topics, index=TOPIC_INDEX)
+    questions, key_words, rand_idx = cache_topic_data(topic.lower(), qknn)
+    st.subheader("{cat} Related Questions".format(cat=topic.lower().title()))
+    info_entities = (f"🏷 this group of '{topic}' questions has a "
                      f"relationship to the subsequent entities: {key_words}")
-    user_text_input = st.selectbox(desc_entities, questions, index=rand_idx)
+    demo_input = st.selectbox(info_entities, questions, index=rand_idx)
 
-    if user_text_input:
-        chosen_question = user_text_input
-        output = cache_load_topic_answer(chosen_question,
-                                         mink=MIN_SENTS,
-                                         maxk=MAX_SENTS,
-                                         mode=compressor)
-        callable_render_output = hold_render_answer(sequence=chosen_question,
-                                                    output=output)
-        titles_and_urls = meta_reader.load_urls(output=output)
-        nsents, npapers = output['n_sents'], len(titles_and_urls)
-        callable_render_info = hold_render_info(n_sents=nsents,
-                                                n_papers=npapers)
-        TITLES_URLS = cache_load_output_titles(titles_and_urls)
-        # If text-to-speech is enabled and selected load the audio file.
-        if TTS_PORT is not None \
-                and isinstance(TTS_PORT, int) and with_text_to_speech:
-            audiofile = api.text_to_speech(text=output['context'],
-                                           prob=0.99, port=TTS_PORT)
-            if audiofile is not None:
-                st.audio(audiofile['audio_file_path'], format='audio/wav')
+    st.sidebar.subheader('Session Mode')
+    info_session = 'Select a session style from the drop-down list below:'
+    session_modes = ('Demo', 'SentenceSimilarity', 'QuestionAnswering',)
+    session_choice = st.sidebar.selectbox(info_session, session_modes)
+    user_input = st.sidebar.text_area('💬 Type your question or sentence')
 
-    # ------------------------------------------------------------------------
-    # :::::::::::::::::::: (SEARCH) INPUT FROM TEXT-AREA :::::::::::::::::::::
-    # ------------------------------------------------------------------------
+    TEXT = demo_input if session_choice == 'Demo' else user_input
+    if TEXT is not None:
+        renderOnOutput, renderOnAbout, renderOnTitlesUrls = init(
+            session=session_choice,
+            text=TEXT,
+            topk=topk,
+            top_p=top_p,
+            mode=mode_selected,
+            with_text_to_speech=is_tts_checked,
+        )
+    if renderOnOutput is not None:
+        renderOnOutput()
+        renderOnAbout()
+    if is_render_titles_checked:
+        renderOnTitlesUrls()
 
-    st.sidebar.subheader('Search Mode')
-    desc_search_mode = ("Sentence-similarity works only when "
-                        "the text entered in the box below.")
-    sentence_similarity_mode = 'Sentence Similarity'
-    question_answering_mode = 'Question Answering'
-    modes_tuple = tuple((sentence_similarity_mode, question_answering_mode,))
-    search_mode = st.sidebar.selectbox(desc_search_mode, modes_tuple)
-    user_text_input = st.sidebar.text_area('💬 Type your question or sentence')
-
-    if user_text_input:
-        question_or_sentence_input = user_text_input
-        # Sentence Similarity Mode:
-        if search_mode == sentence_similarity_mode:
-            output = api.sentence_similarity(question_or_sentence_input,
-                                             topk=MIN_SENTS)
-            # Render similar sentences line by line.
-            if output is not None:
-                callable_render_output = hold_render_similar_sentences(
-                    sentences=output['sents']
-                )
-                titles_and_urls = meta_reader.load_urls(output=output)
-                nsents, npapers = output['n_sents'], len(titles_and_urls)
-                callable_render_info = hold_render_info(n_sents=nsents,
-                                                        n_papers=npapers)
-                TITLES_URLS = cache_load_output_titles(titles_and_urls)
-        # Question Answering Mode:
-        elif search_mode == question_answering_mode:
-            min_valid_words = 4  # Minimum number of words to consider valid.
-            num_valid_words = count_words(string=question_or_sentence_input,
-                                          min_word_length=2)
-            if num_valid_words >= min_valid_words:
-                with st.spinner("'Fetching results..."):
-                    output = load_answer(question_or_sentence_input,
-                                         mink=MIN_SENTS,
-                                         maxk=MAX_SENTS,
-                                         mode=compressor)
-                    callable_render_output = hold_render_answer(
-                        sequence=question_or_sentence_input, output=output)
-                    nsents, npapers = output['n_sents'], len(titles_and_urls)
-                    callable_render_info = hold_render_info(n_sents=nsents,
-                                                            n_papers=npapers)
-                    TITLES_URLS = cache_load_output_titles(titles_and_urls)
-            else:
-                st.sidebar.error(f'Text needs to be at least {min_valid_words}'
-                                 f' words long, and not {num_valid_words}')
-
-    # Call the hold-rendering methods in sequence.
-    callable_render_output()
-    callable_render_info()
-
-    # OPTION [1]: Render titles if option enabled for all modes.
-    if render_titles:
-        if TITLES_URLS is not None:
-            for key in TITLES_URLS:
-                title, url = key['title'], key['url']
-                st.markdown(f"- [{title}]({url})")
-            st.sidebar.markdown('---')
-
-    # Render body:
-    main_app_body()
+    main_app_body(
+        st=st,
+        ds_version=DATASET_VERSION,
+        text_keys=TEXT_KEYS,
+        subsets=SUBSETS,
+        num_papers=NUM_PAPERS,
+        num_sents=NUM_SENTS,
+    )
 
 
 if __name__ == '__main__':

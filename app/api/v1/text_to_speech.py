@@ -1,3 +1,4 @@
+from typing import Optional, Union
 from corona_nlp.utils import clean_tokenization, normalize_whitespace
 from fastapi import APIRouter
 
@@ -14,13 +15,18 @@ router = APIRouter()
 ibm_tts = IBMTextToSpeech(**TTS_CONFIG)
 
 
-def synthesize(text: str, prob: float = 0.99) -> TextToSpeechOutput:
+def synthesize(text: str, prob: float = 0.99
+               ) -> Union[TextToSpeechOutput, None]:
+    tts_output: Optional[TextToSpeechOutput] = None
     text = clean_tokenization(normalize_whitespace(text))
+
     if ibm_tts.is_paragraph_valid(sequence=text):
         audio_file = ibm_tts(text=text, k=prob, play_file=False)
         if audio_file is not None:
             audio_file = audio_file.absolute().as_posix()
-            return TextToSpeechOutput(audio_file_path=audio_file)
+            tts_output = TextToSpeechOutput(audio_file_path=audio_file)
+
+    return tts_output
 
 
 @router.post(

@@ -1,25 +1,40 @@
-from collections import Counter
-from typing import Any, Dict, List, Optional, Union
-
-from corona_nlp.engine import QAEngine
-from corona_nlp.utils import clean_tokenization, normalize_whitespace
-from fastapi import APIRouter, Body, HTTPException
+from typing import Any, Dict, List, Union
 
 from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              QuestionAnsweringWithContextInput,
                              QuestionAnsweringWithContextOutput,
                              SentenceSimilarityInput, SentenceSimilarityOutput)
 from app.api.v1.config import app_config, engine_config
+from corona_nlp.engine import ScibertQuestionAnswering
+from fastapi import APIRouter
 
-ENGINE_CONFIG = engine_config('config.toml')
+
+def preprocess_config():
+    outdated_keys = ['source', 'sort_first',
+                     'index_start', 'model', 'model_device']
+    config = engine_config('config.toml')
+    for outdated_key in outdated_keys:
+        if outdated_key in config.keys():
+            config.pop(outdated_key)
+    if 'encoder' in config:
+        path = config['encoder']
+        if path.endswith('/'):
+            path = path + '0_BERT/'
+        else:
+            path = f'{path}/0_BERT/'
+        config.update({'encoder': path})
+    return config
+
+
+ENGINE_CONFIG = preprocess_config()
 FAISS_INDEX_NPROBE = app_config('config.toml')['fastapi']['nprobe']
 
 router = APIRouter()
-engine = QAEngine(**ENGINE_CONFIG)
+engine = ScibertQuestionAnswering(**ENGINE_CONFIG)
 
 
 def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
-    devices = {k: v.type for k, v in engine.engine_devices.items()}
+    devices = {k: v.type for k, v in engine.all_model_devices.items()}
     meta = {
         'string_store': {
             'num_sents': engine.papers.num_sents,
@@ -33,7 +48,7 @@ def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
             'sentence_transformer': {
                 'model_name_or_path': ENGINE_CONFIG['encoder'],
                 'device': devices['sentence_transformer_model_device'],
-                'max_seq_length': engine.encoder.max_seq_length,
+                'max_seq_length': engine.encoder.max_length,
                 'all_special_tokens': {
                     f'{t[1:-1].lower()}_token': {'id': i, 'token': t}
                     for i, t in zip(engine.tokenizer.all_special_ids,
@@ -68,63 +83,56 @@ def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
     return meta
 
 
-def answer(question: str,
-           mink: int = 15,
-           maxk: int = 30,
-           mode: str = 'bert',
-           nprobe: Optional[int] = None) -> QuestionAnsweringOutput:
+def answer(question: str, topk: int = 5, top_p: int = 25, nprobe: int = 64,
+           mode: str = 'bert') -> QuestionAnsweringOutput:
     """Answer the inputs and build the API data attributes."""
     if nprobe is None:
         nprobe = FAISS_INDEX_NPROBE
 
-    output = engine.answer(question, k=mink, mode=mode, nprobe=nprobe)
-    context = output['context']
-    answer = output['answer'].strip()
+    predictions = engine.answer(question, topk, top_p, nprobe, mode=mode)
+    predictions.popempty()
+    sent_ids = predictions.ids.tolist()[0]
+    num_sents = len(sent_ids)
+    paper_ids = list(engine.papers.lookup(sent_ids, mode='table').keys())
+    titles = list(engine.cord19.titles(paper_ids))
 
-    if len(answer) == 0:
-        max_nprobe = max(engine.nprobe_list)
-        nprobe = max_nprobe if nprobe >= max_nprobe \
-            else [n for n in engine.nprobe_list if n > nprobe][0]
+    # TODO: The engine is now able to provide multiple answers! The previous
+    # engine could only provide a single answer. Which means I need to update.
+    # the methods that use the inputs or/and outputs by this method.
 
-        output = engine.answer(question, k=maxk, mode=mode, nprobe=nprobe)
-        context = output['context']
-        answer = output['answer'].strip()
-
-    sent_ids = output['ids']
-    n_sents = len(sent_ids)
-    paper_ids = [x['paper_id'] for x in engine.papers.lookup(sent_ids)]
-    top_k_paper_ids, _ = zip(*Counter(paper_ids).most_common())
-    top_k_paper_ids = list(top_k_paper_ids)
-    titles = list(engine.titles(top_k_paper_ids))
+    answer = predictions[0].answer
+    context = predictions.c
+    if isinstance(context, list):
+        context = ' '.join(context)
 
     return QuestionAnsweringOutput(
         question=question,
         answer=answer,
         context=context,
-        n_sents=n_sents,
+        num_sents=num_sents,
         titles=titles,
-        paper_ids=top_k_paper_ids,
+        paper_ids=paper_ids,
     )
 
 
 def decode(question: str, context: str) -> QuestionAnsweringWithContextOutput:
-    answer, context = engine.decode(question, context)
+    prediction = engine.pipeline(question=question, context=context)
+    answer = prediction['answer']
     return QuestionAnsweringWithContextOutput(answer=answer, context=context)
 
 
-def similar(sentence: str,
-            topk: int = 5,
-            nprobe: int = 1) -> SentenceSimilarityOutput:
-    dists, indices = engine.similar(query=sentence, k=topk, nprobe=nprobe)
+def similar(text: Union[str, List[str]], top_p: int = 5, nprobe: int = 64,
+            ) -> SentenceSimilarityOutput:
+    dists, indices = engine.similar(text, top_p=top_p, nprobe=nprobe)
     dists, indices = dists.tolist()[0], indices.tolist()[0]
     sentences = [engine.papers[sent_id] for sent_id in indices]
-    paper_ids = [i['paper_id'] for i in engine.papers.lookup(indices)]
+    paper_ids = [i['pid'] for i in engine.papers.lookup(indices)]
 
     return SentenceSimilarityOutput(
-        n_sents=len(sentences),
+        num_sents=len(sentences),
         sents=sentences,
         dists=dists,
-        paper_ids=paper_ids
+        paper_ids=paper_ids,
     )
 
 
@@ -161,6 +169,6 @@ def question_with_context(input: QuestionAnsweringWithContextInput):
     response_model=SentenceSimilarityOutput
 )
 def sentence_similarity(input: SentenceSimilarityInput):
-    if input.sentence:
+    if input.text:
         input_dict = input.dict()
         return similar(**input_dict)
