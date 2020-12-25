@@ -6,8 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 import requests
 import toml
-from corona_nlp.dataset import (CORD19Dataset, clean_tokenization,
-                                normalize_whitespace)
+from coronanlp.dataset import CORD19, clean_tokenization, normalize_whitespace
 
 APIOutput = Union[Dict[str, Any], None]
 
@@ -97,7 +96,7 @@ class ModelAPI:
         return None
 
 
-class MetadataReader(CORD19Dataset):
+class MetadataReader(CORD19):
     def __init__(self, metadata_path: str, source: Union[str, List[str]]):
         super(MetadataReader, self).__init__(source)
         self.meta_df = pd.read_csv(metadata_path)

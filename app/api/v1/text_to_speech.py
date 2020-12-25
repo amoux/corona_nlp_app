@@ -1,5 +1,6 @@
 from typing import Optional, Union
-from corona_nlp.utils import clean_tokenization, normalize_whitespace
+
+from coronanlp.utils import clean_tokenization, normalize_whitespace
 from fastapi import APIRouter
 
 from app.api.schemas import TextToSpeechInput, TextToSpeechOutput

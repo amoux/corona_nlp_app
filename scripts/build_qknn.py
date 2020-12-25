@@ -5,10 +5,10 @@ import faiss
 import graphviz as graphviz
 import plac
 import toml
-from corona_nlp.datatypes import Papers
-from corona_nlp.retrival import common_tokens, extract_questions
-from corona_nlp.transformer import SentenceTransformer
-from corona_nlp.utils import DataIO
+from coronanlp.core import Papers
+from coronanlp.retrival import common_tokens, extract_questions
+from coronanlp.ukplab import SentenceEncoder
+from coronanlp.utils import DataIO
 
 from utils import CONFIG_DICT
 
@@ -50,8 +50,8 @@ def build_qknn(
     papers = Papers.from_disk(papers_filepath)
     questions = extract_questions(papers, minlen)
 
-    encoder = SentenceTransformer(
-        model_path=CONFIG_DICT['models']['sentence_transformer']
+    encoder = SentenceEncoder(
+        model_path=CONFIG_DICT['models']['encoder']
     )
     embedding = encoder.encode(questions)
 

@@ -1,9 +1,9 @@
 import random
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import streamlit as st
-from corona_nlp.utils import DataIO, clean_tokenization, normalize_whitespace
+from coronanlp.utils import DataIO, clean_tokenization, normalize_whitespace
 
 from info import main_app_body, main_app_head
 from utils import MetadataReader, ModelAPI, app_config, count_words

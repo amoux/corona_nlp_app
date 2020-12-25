@@ -6,7 +6,7 @@ def engine_config(toml_config: str = 'config.toml') -> dict:
     engine_config = config['engine']
     engine_config.update({
         'source': config['cord']['source'],
-        'encoder': config['models']['sentence_transformer'],
+        'encoder': config['models']['encoder'],
         'model': config['models']['question_answering'],
         'nlp_model': config['models']['spacy_nlp']
     })

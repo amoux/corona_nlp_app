@@ -5,8 +5,8 @@ from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              QuestionAnsweringWithContextOutput,
                              SentenceSimilarityInput, SentenceSimilarityOutput)
 from app.api.v1.config import app_config, engine_config
-from corona_nlp.engine import ScibertQuestionAnswering
-from fastapi import APIRouter
+from coronanlp.engine import ScibertQuestionAnswering
+from fastapi import APIRouter  # type: ignore
 
 
 def preprocess_config():
@@ -37,17 +37,17 @@ def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
     devices = {k: v.type for k, v in engine.all_model_devices.items()}
     meta = {
         'string_store': {
-            'num_sents': engine.papers.num_sents,
-            'num_papers': engine.papers.num_papers
+            'num_sents': engine.sents.num_sents,
+            'num_papers': engine.sents.num_papers
         },
         'embedding_store': {
             'ntotal': engine.index.ntotal,
             'd': engine.index.d
         },
         'models': {
-            'sentence_transformer': {
+            'encoder': {
                 'model_name_or_path': ENGINE_CONFIG['encoder'],
-                'device': devices['sentence_transformer_model_device'],
+                'device': devices['encoder_model_device'],
                 'max_seq_length': engine.encoder.max_length,
                 'all_special_tokens': {
                     f'{t[1:-1].lower()}_token': {'id': i, 'token': t}
@@ -89,21 +89,19 @@ def answer(question: str, topk: int = 5, top_p: int = 25, nprobe: int = 64,
     if nprobe is None:
         nprobe = FAISS_INDEX_NPROBE
 
-    predictions = engine.answer(question, topk, top_p, nprobe, mode=mode)
-    predictions.popempty()
-    sent_ids = predictions.ids.tolist()[0]
-    num_sents = len(sent_ids)
-    paper_ids = list(engine.papers.lookup(sent_ids, mode='table').keys())
-    titles = list(engine.cord19.titles(paper_ids))
+    pred = engine.answer(question, topk, top_p, nprobe, mode=mode)
+    pred.popempty()
+    sids = pred.sids.unsqueeze(0).tolist()
+    pids = list(engine.sents.lookup(sids, mode='table').keys())
+    titles = list(engine.cord19.titles(pids))
+    num_sents = len(sids)
 
     # TODO: The engine is now able to provide multiple answers! The previous
     # engine could only provide a single answer. Which means I need to update.
     # the methods that use the inputs or/and outputs by this method.
 
-    answer = predictions[0].answer
-    context = predictions.c
-    if isinstance(context, list):
-        context = ' '.join(context)
+    answer = pred[0].answer
+    context = pred.context
 
     return QuestionAnsweringOutput(
         question=question,
@@ -111,7 +109,7 @@ def answer(question: str, topk: int = 5, top_p: int = 25, nprobe: int = 64,
         context=context,
         num_sents=num_sents,
         titles=titles,
-        paper_ids=paper_ids,
+        paper_ids=pids,
     )
 
 
@@ -123,16 +121,18 @@ def decode(question: str, context: str) -> QuestionAnsweringWithContextOutput:
 
 def similar(text: Union[str, List[str]], top_p: int = 5, nprobe: int = 64,
             ) -> SentenceSimilarityOutput:
-    dists, indices = engine.similar(text, top_p=top_p, nprobe=nprobe)
-    dists, indices = dists.tolist()[0], indices.tolist()[0]
-    sentences = [engine.papers[sent_id] for sent_id in indices]
-    paper_ids = [i['pid'] for i in engine.papers.lookup(indices)]
+    dist, sids = engine.similar(text, top_p=top_p, nprobe=nprobe)
+    dist = dist.squeeze(0).tolist()
+    sids = sids.squeeze(0).tolist()
+    pids = engine.decode(sids)
+    sentences = engine.get(sids)
+    num_sents = len(sentences)
 
     return SentenceSimilarityOutput(
-        num_sents=len(sentences),
+        num_sents=num_sents,
         sents=sentences,
-        dists=dists,
-        paper_ids=paper_ids,
+        dists=dist,
+        paper_ids=pids,
     )
 
 

@@ -6,7 +6,7 @@ starlette==0.13.4
 uvicorn==0.11.6
 toml==0.10.1
 pydub==0.24.1
-corona_nlp==0.0.2
+coronanlp==0.0.2
 plac==0.9.6
 ibm_cloud_sdk_core==1.5.1
 numpy==1.18.4
