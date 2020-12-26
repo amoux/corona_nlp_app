@@ -5,7 +5,7 @@ import faiss
 import graphviz as graphviz
 import plac
 import toml
-from coronanlp.core import Papers
+from coronanlp.core import SentenceStore
 from coronanlp.retrival import common_tokens, extract_questions
 from coronanlp.ukplab import SentenceEncoder
 from coronanlp.utils import DataIO
@@ -47,7 +47,7 @@ def build_qknn(
     out_graph_pdf: str = 'clustered_questions.gv',
 ):
     # extract and encode questions for clustering.
-    sents = Papers.from_disk(papers_filepath)
+    sents = SentenceStore.from_disk(papers_filepath)
     questions = extract_questions(sents, minlen)
 
     encoder = SentenceEncoder(

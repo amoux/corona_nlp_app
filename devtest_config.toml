@@ -1,18 +1,13 @@
 [cord]
 version = "2020-03-20"
 num_papers = 500
-num_sents = 92684
+num_sents = 83506
 index_start = 1
 sort_first = true
 text_source = "body_text"
 subsets = [ "biorxiv_medrxiv", "comm_use_subset", "noncomm_use_subset", "custom_license",]
 metadata = "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/metadata.csv"
-source = [
-    "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv",
-    "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset",
-    "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset",
-    "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",
-]
+source = [ "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",]
 
 [engine]
 max_seq_length = 256

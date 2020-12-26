@@ -5,12 +5,16 @@ import numpy as np
 import plac
 import toml
 import torch
-from coronanlp import CORD19, SentenceEncoder, fit_index_ivf_hnsw, save_stores
-from coronanlp.allenai.semanticscholar import DownloadManager
+from coronanlp.allenai import DownloadManager
+from coronanlp.dataset import CORD19
+from coronanlp.indexing import fit_index_ivf_hnsw
+from coronanlp.ukplab import SentenceEncoder
+from coronanlp.utils import save_stores
 
-from scripts.utils import root_config, save_custom_stores
+from utils import root_config, save_custom_stores
 
-DEFAULT_CONFIG_FILE = root_config()
+CONFIG = root_config()
+CONFIG_FILE = './config.toml'
 DEFAULT_DATADIR = './src/data/'
 DATADIR = Path(DEFAULT_DATADIR).absolute()
 
@@ -21,19 +25,16 @@ default: `{0}`
 =============================================
 * DEFAULT CONFIGURATION KEYS ::::::::::::::::
 =============================================
-
 [engine][sents]
-/path/to/..{5}/store/<sents....>
-
+/path/to/..{5}store/<sents....>
 [engine][index]
-/path/to/..{5}/store/<embed.npy>
-
+/path/to/..{5}store/<embed.npy>
 [models][sentence_encoder] (default: {1})
 [models][spacy_nlp]        (default: {2})
 [cord][index_start]        (default: {3})
 [cord][sort_first]         (default: {4})
 ==============================================
-""".format(DEFAULT_CONFIG_FILE,
+""".format(CONFIG_FILE,
            CONFIG['models']['sentence_encoder'],
            CONFIG['models']['spacy_nlp'],
            CONFIG['cord']['index_start'],
@@ -63,7 +64,7 @@ default: `{0}`
                 "option", "batch_size", int),
     nlp_model=("spaCy model name", "option", "nlp_model", str),
     update_config=(DESC_UPDATE_CONFIG, "option", "update_config", bool),
-    config_file=(f"Main config, default: {DEFAULT_CONFIG_FILE}",
+    config_file=(f"Main config, default: {CONFIG_FILE}",
                  "option", "config_file", str),
     store_name=(
         "Store name for all stores. (optional only when dirpath is used",
@@ -226,7 +227,7 @@ def main(
                                'version': arch.date,
                                'subsets': arch.source.names})
 
-    file_path = DEFAULT_CONFIG_FILE if config_file is None else config_file
+    file_path = CONFIG_FILE if config_file is None else config_file
     with open(file_path, 'w') as f:
         toml.dump(config, f)
 
