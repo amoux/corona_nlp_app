@@ -8,6 +8,8 @@ import torch
 from coronanlp.allenai import DownloadManager
 from coronanlp.dataset import CORD19
 from coronanlp.indexing import fit_index_ivf_hnsw
+from coronanlp.retrival import extract_titles_fast, tune_ids
+from coronanlp.tasks import TaskList
 from coronanlp.ukplab import SentenceEncoder
 from coronanlp.utils import save_stores
 
@@ -40,6 +42,35 @@ default: `{0}`
            CONFIG['cord']['index_start'],
            CONFIG['cord']['sort_first'],
            DEFAULT_DATADIR)
+
+
+def server_sample(arch, cord19, encoder, min_title_length=8) -> List[int]:
+    # This method enforces that both titles from `metadata.csv`
+    # and the actual titles extracted from the file can be
+    # loaded (since the metadata.csv has bad UID's that do not
+    # exist; in otherwords - it avoids issues when loading a title
+    # or UID <--> PID from either sources. It also adds the benifit
+    # of reducing the number of documents to tokenize. Since DEC-26
+    # all versions from semantic scholar have over 29,000 articles!
+    import pandas as pd
+    df = pd.read_csv(arch.content['metadata'])
+    df = df.loc[df['has_full_text'] == True, ['sha', 'title']]
+    df.dropna(inplace=True)
+    df.drop_duplicates(subset=['sha'], inplace=True)
+    full_text = {uid: title for uid, title
+                 in zip(df['sha'].tolist(), df['title'].tolist())
+                 if len(title.strip().split()) > min_title_length}
+
+    full_text_pids = sorted(cord19._encode(full_text.keys()))
+    title_map = extract_titles_fast(cord19, full_text_pids, min_title_length)
+
+    tasklist = TaskList()
+    target_size = len(title_map) // len(tasklist)
+    tuned = tune_ids(encoder, title_map, tasklist, target_size, batch_size=16)
+    sample = sorted(set(tuned.pids))
+
+    print(f'*Sample reduced: {len(sample):,}, from {len(cord19):,} total.')
+    return sample
 
 
 @plac.annotations(
@@ -157,22 +188,28 @@ def main(
         sort_first=sort_first,
         nlp_model=nlp_model
     )
-    sample = cord19.sample(sample)
-    sents = cord19.batch(sample, minlen, maxlen, workers)
-    cfg_num_papers = sents.num_papers
-    cfg_num_sents = sents.num_sents
 
     # EMBED::
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     encoder = SentenceEncoder.from_pretrained(encoder, device=device)
     if encoder.device.type == 'cuda':
         torch.cuda.empty_cache()
+
+    paper_ids = []
+    if arch is not None:
+        paper_ids = server_sample(arch, cord19, min_title_length=8)
+    else:
+        paper_ids = cord19.sample(sample)
+
+    sents = cord19.batch(paper_ids, minlen, maxlen, workers)
     embed = encoder.encode(
         sentences=sents,
         max_length=max_length,
         batch_size=batch_size,
         show_progress=True
     )
+    cfg_num_papers = sents.num_papers
+    cfg_num_sents = sents.num_sents
 
     # INDEX::
     N = embed.shape[0]
