@@ -47,8 +47,8 @@ def build_qknn(
     out_graph_pdf: str = 'clustered_questions.gv',
 ):
     # extract and encode questions for clustering.
-    papers = Papers.from_disk(papers_filepath)
-    questions = extract_questions(papers, minlen)
+    sents = Papers.from_disk(papers_filepath)
+    questions = extract_questions(sents, minlen)
 
     encoder = SentenceEncoder(
         model_path=CONFIG_DICT['models']['encoder']
@@ -136,7 +136,7 @@ def main(
     """Build the QKNN data object for the web-application."""
     config = CONFIG_DICT
     if papers_fp_in is None:
-        papers_fp_in = Path(config['engine']['papers'])
+        papers_fp_in = Path(config['engine']['sents'])
         if not papers_fp_in.is_file():
             raise ValueError(f'File {papers_fp_in} does not exist. By default '
                              'the file is expected in `root/src/data/*.pkl`')

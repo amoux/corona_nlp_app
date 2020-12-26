@@ -18,31 +18,29 @@ MIN_VALID_WORDS = 4
 TOPIC_INDEX = 4
 
 config = app_config()
-# Information related to the dataset and number of samples.
-NUM_PAPERS = config['streamlit']['num_papers']
-NUM_SENTS = config['streamlit']['num_sentences']
-SUBSETS = ', '.join([f'`{s}`' for s in config['streamlit']['subsets']])
-DATASET_VERSION = config['streamlit']['dataset_version']
-TEXT_KEYS = config['streamlit']['text_source']
-# Data sources for the application's content.
-CORD19_SOURCE = config['cord']['source']
-CORD19_METADATA = config['cord']['metadata']
+
+NUM_PAPERS = config['cord']['num_papers']
+NUM_SENTS = config['cord']['num_sents']
+CORD_SUBSETS = ', '.join([f'`{s}`' for s in config['cord']['subsets']])
+CORD_VERSION = config['cord']['version']
+CORD_TEXT_SOURCE = config['cord']['text_source']
+CORD_SOURCE = config['cord']['source']
+CORD_METADATA = config['cord']['metadata']
+
 QKNN_FILE = config['streamlit']['qknn_file']
-# Ports for connecting the backend services
 FRONTEND_PORT = config['streamlit']['port']
 BACKEND_PORT = config['fastapi']['port']
+
 # Text to speech specific configuration.
 TTS_PORT: Optional[int] = None
 if config['streamlit']['enable_tts']:
     unique_tts_port = config['tts']['port']
-    TTS_PORT = unique_tts_port if unique_tts_port \
-        else config['fastapi']['port']
-
+    TTS_PORT = unique_tts_port if unique_tts_port else BACKEND_PORT
 
 api = ModelAPI(port=BACKEND_PORT)
 meta_reader = MetadataReader(
-    metadata_path=CORD19_METADATA,
-    source=CORD19_SOURCE,
+    metadata_path=CORD_METADATA,
+    source=CORD_SOURCE,
 )
 
 
@@ -253,9 +251,9 @@ def main():
 
     main_app_body(
         st=st,
-        ds_version=DATASET_VERSION,
-        text_keys=TEXT_KEYS,
-        subsets=SUBSETS,
+        ds_version=CORD_VERSION,
+        text_keys=CORD_TEXT_SOURCE,
+        subsets=CORD_SUBSETS,
         num_papers=NUM_PAPERS,
         num_sents=NUM_SENTS,
     )

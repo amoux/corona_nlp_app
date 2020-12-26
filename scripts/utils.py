@@ -1,13 +1,15 @@
-from typing import Dict
 from pathlib import Path
+from typing import Dict
 
 import coronanlp
 import faiss
 import numpy
 import toml
 
-CONFIG_FILE = './config.toml'
-CONFIG_DICT = toml.load(Path(CONFIG_FILE).absolute().as_posix())
+
+def root_config(fp='./config.toml'):
+    abs_fp = Path(fp).absolute()
+    return toml.load(abs_fp.as_posix())
 
 
 def save_custom_stores(

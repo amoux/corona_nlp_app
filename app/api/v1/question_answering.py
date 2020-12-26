@@ -6,31 +6,25 @@ from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              SentenceSimilarityInput, SentenceSimilarityOutput)
 from app.api.v1.config import app_config, engine_config
 from coronanlp.engine import ScibertQuestionAnswering
+from coronanlp.utils import load_store
 from fastapi import APIRouter  # type: ignore
 
 
-def preprocess_config():
-    outdated_keys = ['source', 'sort_first',
-                     'index_start', 'model', 'model_device']
-    config = engine_config('config.toml')
-    for outdated_key in outdated_keys:
-        if outdated_key in config.keys():
-            config.pop(outdated_key)
-    if 'encoder' in config:
-        path = config['encoder']
-        if path.endswith('/'):
-            path = path + '0_BERT/'
-        else:
-            path = f'{path}/0_BERT/'
-        config.update({'encoder': path})
-    return config
+config = app_config('config.toml')
+is_custom_store = config['store']['is_custom_store']
 
+engine_kwargs = engine_config('config.toml')
+sents = engine_kwargs.pop('sents')
+index = engine_kwargs.pop('index')
+if not is_custom_store:
+    sents = load_store('sents', store_name=sents)
+    index = load_store('index', store_name=index)
 
-ENGINE_CONFIG = preprocess_config()
-FAISS_INDEX_NPROBE = app_config('config.toml')['fastapi']['nprobe']
-
+engine = ScibertQuestionAnswering(sents, index, **engine_kwargs)
 router = APIRouter()
-engine = ScibertQuestionAnswering(**ENGINE_CONFIG)
+
+FAISS_INDEX_NPROBE = config['fastapi']['nprobe']
+ENGINE_KWARGS = engine_kwargs
 
 
 def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
@@ -46,7 +40,7 @@ def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
         },
         'models': {
             'encoder': {
-                'model_name_or_path': ENGINE_CONFIG['encoder'],
+                'model_name_or_path': ENGINE_KWARGS['encoder'],
                 'device': devices['encoder_model_device'],
                 'max_seq_length': engine.encoder.max_length,
                 'all_special_tokens': {
@@ -56,7 +50,7 @@ def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
                 }
             },
             'question_answering': {
-                'model_name_or_path': ENGINE_CONFIG['model'],
+                'model_name_or_path': ENGINE_KWARGS['model'],
                 'device': devices['question_answering_model_device'],
                 'num_parameters': engine.model.num_parameters(),
                 'num_labels': engine.model.num_labels
@@ -66,8 +60,8 @@ def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
                     'device': devices['summarizer_model_device'],
                     'reduce_option': engine._bert_summarizer.reduce_option,
                     'hidden': engine._bert_summarizer.hidden,
-                    'custom_model': ENGINE_CONFIG['model'],
-                    'custom_tokenizer': ENGINE_CONFIG['encoder']
+                    'custom_model': ENGINE_KWARGS['model'],
+                    'custom_tokenizer': ENGINE_KWARGS['encoder']
                 },
                 'freq_summarizer': {
                     'lang': engine.nlp.meta['lang'],

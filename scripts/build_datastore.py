@@ -8,11 +8,10 @@ import torch
 from coronanlp import CORD19, SentenceEncoder, fit_index_ivf_hnsw, save_stores
 from coronanlp.allenai.semanticscholar import DownloadManager
 
-from utils import save_custom_stores
+from scripts.utils import root_config, save_custom_stores
 
-DEFAULT_CONFIG = './config.toml'
+DEFAULT_CONFIG_FILE = root_config()
 DEFAULT_DATADIR = './src/data/'
-CONFIG = toml.load(Path(DEFAULT_CONFIG).absolute().as_posix())
 DATADIR = Path(DEFAULT_DATADIR).absolute()
 
 DESC_UPDATE_CONFIG = """
@@ -22,20 +21,23 @@ default: `{0}`
 =============================================
 * DEFAULT CONFIGURATION KEYS ::::::::::::::::
 =============================================
-[engine][papers]
-/path/to/..{5}/store/<sentences...pkl >
+
+[engine][sents]
+/path/to/..{5}/store/<sents....>
+
 [engine][index]
-/path/to/..{5}/store/<embed...bin >
-[models][encoder] (default: {1})
-[models][spacy_nlp]            (default: {2})
-[cord.init][index_start]       (default: {3})
-[cord.init][sort_first]        (default: {4})
+/path/to/..{5}/store/<embed.npy>
+
+[models][sentence_encoder] (default: {1})
+[models][spacy_nlp]        (default: {2})
+[cord][index_start]        (default: {3})
+[cord][sort_first]         (default: {4})
 ==============================================
-""".format(DEFAULT_CONFIG,
-           CONFIG['models']['encoder'],
+""".format(DEFAULT_CONFIG_FILE,
+           CONFIG['models']['sentence_encoder'],
            CONFIG['models']['spacy_nlp'],
-           CONFIG['cord']['init']['index_start'],
-           CONFIG['cord']['init']['sort_first'],
+           CONFIG['cord']['index_start'],
+           CONFIG['cord']['sort_first'],
            DEFAULT_DATADIR)
 
 
@@ -61,7 +63,7 @@ default: `{0}`
                 "option", "batch_size", int),
     nlp_model=("spaCy model name", "option", "nlp_model", str),
     update_config=(DESC_UPDATE_CONFIG, "option", "update_config", bool),
-    config_file=(f"Main config, default: {DEFAULT_CONFIG}",
+    config_file=(f"Main config, default: {DEFAULT_CONFIG_FILE}",
                  "option", "config_file", str),
     store_name=(
         "Store name for all stores. (optional only when dirpath is used",
@@ -103,23 +105,22 @@ def main(
     cfg_embed: str  # the actual embed <numpy.array>
     cfg_spacy_nlp: str
     cfg_encoder_model: str
-    is_custom_datadir: bool
+    is_custom_store: bool
     config = CONFIG
 
     if dirpath is None:
-        is_custom_datadir = False
+        is_custom_store = False
     else:
         dirpath = Path(dirpath).absolute()
         if not dirpath.exists():
             dirpath.mkdir(parents=True)
-        is_custom_datadir = True
-    if not is_custom_datadir and store_name is None:
+        is_custom_store = True
+    if not is_custom_store and store_name is None:
         raise ValueError(
             "When saving to default directory (cache) you need to provive "
             "the name the argument `store_name` is expected; please try "
             "again or ignore and use a custom directory. path instead. For "
-            "this; the `dirpath` parameter is expected"
-        )
+            "this; the `dirpath` parameter is expected")
 
     arch = None
     if arch_date is not None:
@@ -134,13 +135,13 @@ def main(
     if source is None:
         source = config['cord']['source']
     if index_start is None:
-        index_start = config['cord']['init']['index_start']
+        index_start = config['cord']['index_start']
     if sort_first is None:
-        sort_first = config['cord']['init']['sort_first']
+        sort_first = config['cord']['sort_first']
     if nlp_model is None:
         nlp_model = config['models']['spacy_nlp']
     if encoder is None:
-        encoder = config['models']['encoder']
+        encoder = config['models']['sentence_encoder']
 
     cfg_spacy_nlp = nlp_model
     cfg_encoder_model = encoder
@@ -149,11 +150,12 @@ def main(
     cfg_sort_first = sort_first
 
     # SENTS::
-    cord19 = CORD19(source=source,
-                    index_start=index_start,
-                    sort_first=sort_first,
-                    nlp_model=nlp_model)
-
+    cord19 = CORD19(
+        source=source,
+        index_start=index_start,
+        sort_first=sort_first,
+        nlp_model=nlp_model
+    )
     sample = cord19.sample(sample)
     sents = cord19.batch(sample, minlen, maxlen, workers)
     cfg_num_papers = sents.num_papers
@@ -164,7 +166,6 @@ def main(
     encoder = SentenceEncoder.from_pretrained(encoder, device=device)
     if encoder.device.type == 'cuda':
         torch.cuda.empty_cache()
-
     embed = encoder.encode(
         sentences=sents,
         max_length=max_length,
@@ -179,7 +180,7 @@ def main(
         nlist = nlist ** 16
     index_ivf = fit_index_ivf_hnsw(embed, metric='l2', m=32)
 
-    if is_custom_datadir:
+    if is_custom_store:
         custom_fp = save_custom_stores(
             sents=sents,
             embed=embed,
@@ -200,39 +201,35 @@ def main(
         cfg_embed = store_name
         cfg_index = store_name
 
-    if is_custom_datadir:
+    if is_custom_store:
         print(f'Done:  `sents, embed & index` saved in path: {dirpath}')
     else:
         print(f'Done: `sents, embed & index` saved to store: {store_name}')
     print("Updating configuration file with the updated settings.")
 
     if update_config:
-        stores = {'sents': cfg_sents,
-                  'embed': cfg_embed,
-                  'index': cfg_index}
-        config['stores'].update(stores)
-        if not is_custom_datadir and arch is not None:
-            config['cord'].update({'metadata': arch.content['metadata']})
-            config['streamlit'].update({'dataset_version': arch.date})
-            config['streamlit'].update({'subsets': arch.source.names})
+        pass  # TODO: Updating config after building all stores does??
 
-        config['cord'].update({'source': cfg_source})
-        config['cord']['init'].update({'index_start': cfg_index_start,
-                                       'sort_first': cfg_sort_first})
-        config['streamlit'].update({'num_papers': cfg_num_papers,
-                                    'num_sentences': cfg_num_sents})
+    config['models'].update({'sentence_encoder': cfg_encoder_model,
+                             'spacy_nlp': cfg_spacy_nlp})
+    config['stores'].update({'sents': cfg_sents,
+                             'embed': cfg_embed,
+                             'index': cfg_index,
+                             'is_custom_store': is_custom_store})
+    config['cord'].update({'source': cfg_source,
+                           'index_start': cfg_index_start,
+                           'sort_first': cfg_sort_first,
+                           'num_papers': cfg_num_papers,
+                           'num_sents': cfg_num_sents})
+    if not is_custom_store and arch is not None:
+        config['cord'].update({'metadata': arch.content['metadata'],
+                               'version': arch.date,
+                               'subsets': arch.source.names})
 
-        # TODO: change 'paper' to 'sents' in all places!
-        # config['engine'].update({'index': cfg_index, 'papers': cfg_sents})
-
-        config['engine'].update({'index': cfg_index, 'sents': cfg_sents})
-        config['data'].update({'embed': cfg_embed})
-        config['models'].update({'encoder': cfg_encoder_model,
-                                 'spacy_nlp': cfg_spacy_nlp})
-
-    file_path = DEFAULT_CONFIG if config_file is None else config_file
+    file_path = DEFAULT_CONFIG_FILE if config_file is None else config_file
     with open(file_path, 'w') as f:
         toml.dump(config, f)
+
     print(f"configuration file has been updated, file: {file_path}")
 
 
