@@ -26,42 +26,43 @@ router = APIRouter()
 FAISS_INDEX_NPROBE = config['fastapi']['nprobe']
 ENGINE_KWARGS = engine_kwargs
 
+encoder_config = engine.encoder.transformer.config
+compressor_config = engine._bert_summarizer.model.model.config
+decoder_config = engine.model.config
 
-def engine_meta() -> Dict[str, Dict[str, Union[str, int, Dict[str, Any]]]]:
+
+def engine_meta():
     devices = {k: v.type for k, v in engine.all_model_devices.items()}
     meta = {
-        'string_store': {
+        'sents': {
             'num_sents': engine.sents.num_sents,
             'num_papers': engine.sents.num_papers
         },
-        'embedding_store': {
+        'embed': {
             'ntotal': engine.index.ntotal,
             'd': engine.index.d
         },
         'models': {
-            'encoder': {
-                'model_name_or_path': ENGINE_KWARGS['encoder'],
-                'device': devices['encoder_model_device'],
-                'max_seq_length': engine.encoder.max_length,
+            'sentence_encoder': {
+                'device': devices['sentence_transformer_model_device'],
                 'all_special_tokens': {
                     f'{t[1:-1].lower()}_token': {'id': i, 'token': t}
                     for i, t in zip(engine.tokenizer.all_special_ids,
-                                    engine.tokenizer.all_special_tokens)
-                }
+                                    engine.tokenizer.all_special_tokens)},
+                'output_hidden': encoder_config.output_hidden_states
             },
             'question_answering': {
-                'model_name_or_path': ENGINE_KWARGS['model'],
                 'device': devices['question_answering_model_device'],
                 'num_parameters': engine.model.num_parameters(),
-                'num_labels': engine.model.num_labels
+                'num_labels': engine.model.num_labels,
+                'output_hidden': decoder_config.output_hidden_states
             },
             'compressors': {
                 'bert_summarizer': {
                     'device': devices['summarizer_model_device'],
                     'reduce_option': engine._bert_summarizer.reduce_option,
                     'hidden': engine._bert_summarizer.hidden,
-                    'custom_model': ENGINE_KWARGS['model'],
-                    'custom_tokenizer': ENGINE_KWARGS['encoder']
+                    'output_hidden': compressor_config.output_hidden_states
                 },
                 'freq_summarizer': {
                     'lang': engine.nlp.meta['lang'],

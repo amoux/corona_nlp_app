@@ -1,32 +1,21 @@
-
 [cord]
-version = "2020-03-13"
-num_papers = 4202
-num_sents = 598839
+version = "2020-03-20"
+num_papers = 6641
+num_sents = 1003614
 index_start = 1
 sort_first = true
 text_source = "body_text"
-subsets = ["biorxiv_medrxiv", "noncomm_use_subset", "comm_use_subset", "pmc_custom_license"]
-metadata = "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/all_sources_metadata_2020-03-13.csv"
-source = [
-  "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/biorxiv_medrxiv/biorxiv_medrxiv",
-  "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/noncomm_use_subset/noncomm_use_subset",
-  "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/comm_use_subset/comm_use_subset",
-  "/home/ego/Github/corona_nlp_app/src/CORD-19-research-challenge/2020-03-13/pmc_custom_license/pmc_custom_license",
-]
+subsets = [ "biorxiv_medrxiv", "comm_use_subset", "noncomm_use_subset", "custom_license",]
+metadata = "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/metadata.csv"
+source = [ "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",]
 
 [engine]
 max_seq_length = 256
 do_lower_case = false
 model_device = "cpu"
 summarizer_hidden = -2
-summarizer_reduce = 'mean'
+summarizer_reduce = "mean"
 lengths_from_sents = true
-
-[engine.summarizer_kwargs]
-ratio = 0.3
-use_first = true
-algorithm = "kmeans"
 
 [models]
 sentence_encoder = "amoux/scibert_nli_squad"
@@ -34,9 +23,9 @@ question_answering = "amoux/scibert_nli_squad"
 spacy_nlp = "en_core_sci_sm"
 
 [stores]
-embed = ""
-index = ""
-sents = ""
+embed = "webapp"
+index = "webapp"
+sents = "webapp"
 is_custom_store = false
 
 [fastapi]
@@ -51,6 +40,11 @@ port = 8084
 [tts]
 cache_dir = "/home/ego/Github/corona_nlp_app/src/tts_cache"
 port = false
+
+[engine.summarizer_kwargs]
+ratio = 0.3
+use_first = true
+algorithm = "kmeans"
 
 [tts.init]
 apikey = "KimsTEZMLu5TPUmS62utcjbt-ywpu95inG1cvqW43ROL"

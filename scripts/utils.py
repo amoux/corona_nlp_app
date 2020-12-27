@@ -25,19 +25,16 @@ def save_custom_stores(
 
     PIDS = sents.num_papers
     filepaths = {}
-
     if sents:
         sents_fp = datadir.joinpath(f"store_sents_{PIDS}.pkl")
         sents_fp_posix = sents_fp.absolute().as_posix()
         filepaths['sents'] = sents_fp_posix
         sents.to_disk(sents_fp_posix)
-
     if embed:
         embed_fp = datadir.joinpath(f"store_embed_{PIDS}.npy")
         embed_fp_posix = embed_fp.absolute().as_posix()
         filepaths['embed'] = embed_fp_posix
         numpy.save(embed_fp_posix, embed)
-
     if index:
         index_fp = datadir.joinpath(f"store_index_{PIDS}.bin")
         index_fp_posix = index_fp.absolute().as_posix()

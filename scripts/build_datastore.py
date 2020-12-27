@@ -44,7 +44,7 @@ default: `{0}`
            DEFAULT_DATADIR)
 
 
-def server_sample(arch, cord19, encoder, min_title_length=8) -> List[int]:
+def server_sample(arch, cord19, min_title_len=8, return_mapping=False):
     # This method enforces that both titles from `metadata.csv`
     # and the actual titles extracted from the file can be
     # loaded (since the metadata.csv has bad UID's that do not
@@ -59,22 +59,28 @@ def server_sample(arch, cord19, encoder, min_title_length=8) -> List[int]:
     df.drop_duplicates(subset=['sha'], inplace=True)
     full_text = {uid: title for uid, title
                  in zip(df['sha'].tolist(), df['title'].tolist())
-                 if len(title.strip().split()) > min_title_length}
+                 if len(title.strip().split()) > min_title_len}
 
     full_text_pids = sorted(cord19._encode(full_text.keys()))
-    title_map = extract_titles_fast(cord19, full_text_pids, min_title_length)
+    title_map = extract_titles_fast(cord19, full_text_pids, min_title_len)
+    if return_mapping:
+        return title_map
+    sample = sorted(title_map.keys())
+    return sample
 
-    tasklist = TaskList()
-    target_size = len(title_map) // len(tasklist)
-    tuned = tune_ids(encoder, title_map, tasklist, target_size, batch_size=16)
+
+def kaggle_sample(arch, cord19, encoder, min_title_len=8):
+    mapping = server_sample(arch, cord19, min_title_len, return_mapping=True)
+    kaggle_tasks = TaskList()
+    target_size = len(mapping) // len(kaggle_tasks)
+    tuned = tune_ids(encoder, mapping, kaggle_tasks, target_size)
     sample = sorted(set(tuned.pids))
-
-    print(f'*Sample reduced: {len(sample):,}, from {len(cord19):,} total.')
     return sample
 
 
 @plac.annotations(
     sample=("Number of papers. '-1' for all papers", "option", "sample", int),
+    type=("Sample type; `server`, `kaggle` or `none` ", "option", "type", str),
     minlen=("Minimum length of a string to consider", "option", "minlen", int),
     maxlen=("Maximum length of a string to consider", "option", "maxlen", int),
     index_start=("Starting index position for paper-ids, default: `1`",
@@ -110,8 +116,9 @@ def server_sample(arch, cord19, encoder, min_title_length=8) -> List[int]:
 )
 def main(
     sample: int = -1,
+    type: str = 'server',
     minlen: int = 15,
-    maxlen: int = 800,
+    maxlen: int = 600,
     workers: int = 7,
     max_length: int = 512,
     batch_size: int = 12,
@@ -139,6 +146,16 @@ def main(
     cfg_encoder_model: str
     is_custom_store: bool
     config = CONFIG
+
+    sample_type = ''
+    sample_types = ['server', 'kaggle', 'none']
+    if type.lower().strip() in sample_types:
+        sample_type = type.lower().strip()
+    else:
+        raise ValueError(
+            f'Expected one sample type from: {sample_types}, '
+            f'instead got: {type}. To do all sample pass `none`'
+        )
 
     if dirpath is None:
         is_custom_store = False
@@ -196,8 +213,14 @@ def main(
         torch.cuda.empty_cache()
 
     paper_ids = []
-    if arch is not None:
-        paper_ids = server_sample(arch, cord19, min_title_length=8)
+    if arch is not None or sample_type != 'none':
+        if sample_type == 'server':
+            paper_ids = server_sample(arch, cord19)
+        if sample_type == 'kaggle':
+            paper_ids = kaggle_sample(arch, cord19, encoder)
+
+        print('*{} sample reduced to: {:,}, from {:,} total.'.format(
+            sample_type.title(), len(paper_ids), len(cord19)))
     else:
         paper_ids = cord19.sample(sample)
 
