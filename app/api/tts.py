@@ -173,9 +173,9 @@ class IBMTextToSpeech:
         score = self.nlp(text).similarity(self.nlp(to))
         return True if score >= k else False
 
-    def smart_cache(self, text: str, k=0.99) -> int:
+    def smart_cache(self, text: str, k=0.99) -> Optional[int]:
         """Return the file index if the text is similar to a cached text."""
-        similar = -1
+        similar = None
         for index, data in self.queries.items():
             if self.is_similar(data["text"], to=text, k=k):
                 similar = index

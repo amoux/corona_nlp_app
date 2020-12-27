@@ -99,21 +99,24 @@ class ModelAPI:
 class MetadataReader(CORD19):
     def __init__(self, metadata_path: str, source: Union[str, List[str]]):
         super(MetadataReader, self).__init__(source)
-        self.meta_df = pd.read_csv(metadata_path)
+        self.meta = pd.read_csv(metadata_path)
         self.paper_urls: Dict[str, str] = {}
         self._init_urls()
 
+    @property
+    def columns(self):
+        return self.meta.columns
+
     def _init_urls(self):
-        paper_ids = self.meta_df['sha'].tolist()
-        paper_urls = None
-        is_url_from_doi_key = False
-        columns = list(map(lambda item: item.lower().strip(),
-                           self.meta_df.columns))
+        columns = list(map(lambda i: i.lower().strip(), self.columns))
+        uids = self.meta['sha'].tolist()
+        urls = []
+        urls_from_doi = False
         if 'url' in columns:
-            paper_urls = self.meta_df['url'].to_list()
+            urls = self.meta['url'].tolist()
         elif 'doi' in columns:
-            paper_urls = self.meta_df['doi'].to_list()
-            is_url_from_doi_key = True
+            urls = self.meta['doi'].tolist()
+            urls_from_doi = True
         else:
             raise ValueError(
                 "Failed to find URLs from both possible columns: `url|doi`"
@@ -121,27 +124,27 @@ class MetadataReader(CORD19):
                 "under the column `< url >` or format if `< doi >` is the "
                 "column name as e.g., col:doi `10.1007/s00134-020-05985-9`"
             )
-        for paper_id, url in zip(paper_ids, paper_urls):
+
+        # This has to be the ugliest piece of **** code
+        # - sorry to anyone looking at this but this piece
+        # of **** code works, I hope to fix this one day.
+        for uid, url in zip(uids, urls):
             url = str(url).strip()
-            if len(url) == 0:
-                continue
-            paper_id = str(paper_id).strip()
-            if len(paper_id) > 0 and paper_id != 'nan' \
-                    and paper_id in self.paper_index \
-                    and paper_id not in self.paper_urls:
-
-                # This url format issue has been fixed in newer versions
-                # `> 2020-03-13` of the CORD-19 Dataset (kaggle version).
-                # Ugly most deal with ugly. I really dont care about this.
-                if is_url_from_doi_key:
-                    match = re.match(REGX_URL, url)
-                    if match is not None and match.group():
-                        url = url.replace(match.group(), '') \
-                            .replace('://', '').replace('//', '').strip()
-                    url = f'https://{url}' if 'doi.org' in url \
-                        else f'https://doi.org/{url}'
-
-                self.paper_urls[paper_id] = url
+            uid = str(uid).strip()
+            if len(url) == 0: continue
+            if len(uid) == 0: continue
+            if uid == 'nan': continue
+            if uid not in self.uid2pid: continue
+            if uid in self.paper_urls: continue
+            if urls_from_doi:
+                m = re.match(REGX_URL, url)
+                if m is not None and m.group():
+                    m = m.replace(m.group(), '')
+                    m = m.replace('://', '')
+                    url = m.replace('//', '').strip()
+                url = f'https://{url}' if 'doi.org' in url \
+                    else f'https://doi.org/{url}'
+            self.paper_urls[uid] = url
 
     def load_urls(self, output: Union[Dict[str, int], List[int]]):
         paper_ids: List[int] = None
@@ -156,13 +159,13 @@ class MetadataReader(CORD19):
                 'list of integers or a List[int] of iterable ids'
             )
         data: Dict[str, str] = []
-        for index in paper_ids:
-            title = self.title(index).strip()
+        for pid in paper_ids:
+            title = self.title(pid).strip()
             if len(title) == 0:
                 title = 'title - n/a'
-            paper_id = self[index]
-            if paper_id in self.paper_urls:
-                url = self.paper_urls[paper_id].strip()
+            uid = self[pid]
+            if uid in self.paper_urls:
+                url = self.paper_urls[uid].strip()
                 if len(url) == 0:
                     url = 'url - n/a'
                 data.append({'title': title, 'url': url})

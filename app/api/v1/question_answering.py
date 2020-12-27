@@ -11,7 +11,7 @@ from fastapi import APIRouter  # type: ignore
 
 
 config = app_config('config.toml')
-is_custom_store = config['store']['is_custom_store']
+is_custom_store = config['stores']['is_custom_store']
 
 engine_kwargs = engine_config('config.toml')
 sents = engine_kwargs.pop('sents')
@@ -86,7 +86,7 @@ def answer(question: str, topk: int = 5, top_p: int = 25, nprobe: int = 64,
 
     pred = engine.answer(question, topk, top_p, nprobe, mode=mode)
     pred.popempty()
-    sids = pred.sids.unsqueeze(0).tolist()
+    sids = pred.sids.squeeze(0).tolist()
     pids = list(engine.sents.lookup(sids, mode='table').keys())
     titles = list(engine.cord19.titles(pids))
     num_sents = len(sids)
