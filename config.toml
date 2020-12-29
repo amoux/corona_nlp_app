@@ -6,8 +6,13 @@ index_start = 1
 sort_first = true
 text_source = "body_text"
 subsets = [ "biorxiv_medrxiv", "comm_use_subset", "noncomm_use_subset", "custom_license",]
-metadata = "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/metadata.csv"
-source = [ "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",]
+metadata = "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/metadata.csv"
+source = [
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv",
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset",
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset",
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",
+]
 
 [engine]
 max_seq_length = 512
@@ -36,27 +41,27 @@ question_answering = "amoux/scibert_nli_squad"
 spacy_nlp = "en_core_sci_sm"
 
 [stores]
-embed = "webapp"
-index = "webapp"
-sents = "webapp"
+embed = ""
+index = ""
+sents = ""
 is_custom_store = false
 
 [fastapi]
 port = 8080
 
 [streamlit]
-qknn_file = "/home/ego/Github/corona_nlp_app/src/QKNN.pkl"
+qknn_file = "corona_nlp_app/src/QKNN.pkl"
 enable_tts = true
 port = 8084
 
 [tts]
-cache_dir = "/home/ego/Github/corona_nlp_app/src/tts_cache"
+cache_dir = "corona_nlp_app/src/tts_cache"
 port = false
 
 [tts.init]
-apikey = "KimsTEZMLu5TPUmS62utcjbt-ywpu95inG1cvqW43ROL"
+apikey = "<TTS-API-KEY>"
 disable_ssl = false
-url = "https://api.us-south.text-to-speech.watson.cloud.ibm.com/instances/7b0d5686-5cb2-4bad-bc78-796b95de05cc"
+url = "<IAM-IBM-TTS-API-URL>"
 
 [tts.voice]
 customizable = true
@@ -64,7 +69,7 @@ description = "Kevin: American English male voice. Dnn technology"
 gender = "male"
 language = "en-US"
 name = "en-US_KevinV3Voice"
-url = "https://api.us-south.text-to-speech.watson.cloud.ibm.com/instances/7b0d5686-5cb2-4bad-bc78-796b95de05cc/v1/voices/en-US_KevinV3Voice"
+url = "<IAM-IBM-TTS-API>"
 
 [tts.voice.supported_features]
 custom_pronuciation = true

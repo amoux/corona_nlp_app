@@ -1,6 +1,6 @@
 # vscode
 .vscode
-
+.config.toml
 # application data sources
 src/*
 
