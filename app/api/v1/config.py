@@ -8,8 +8,8 @@ def engine_config(toml_config: str = 'cfg.toml') -> dict:
     model = config['models']['question_answering']
     encoder = None if encoder == model else encoder
 
-    kwargs = config['engine']
-    kwargs.update(
+    engine_kwargs = config['engine']
+    engine_kwargs.update(
         {
             'sents': config['stores']['sents'],
             'index': config['stores']['index'],
@@ -18,4 +18,6 @@ def engine_config(toml_config: str = 'cfg.toml') -> dict:
             'nlp_model': config['models']['spacy_nlp']
         }
     )
-    return kwargs
+    compressor_kwargs = engine_kwargs.pop('compressor')
+    engine_kwargs.update(compressor_kwargs)
+    return engine_kwargs

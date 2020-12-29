@@ -10,12 +10,25 @@ metadata = "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/metadata.cs
 source = [ "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset", "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",]
 
 [engine]
-max_seq_length = 256
+max_seq_length = 512
 do_lower_case = false
-model_device = "cpu"
-summarizer_hidden = -2
-summarizer_reduce = "mean"
-lengths_from_sents = true
+model_device = "cuda"
+
+[engine.question_answering]
+topk = 5
+top_p = 25
+nprobe = 128
+doc_stride = 1
+max_answer_len = 128
+max_seq_len = 500
+max_question_len = 256
+handle_impossible_answer = true
+
+[engine.compressor]
+hidden_layer = -2
+pooling = "mean"
+ratio = 0.3
+use_first = true
 
 [models]
 sentence_encoder = "amoux/scibert_nli_squad"
@@ -29,7 +42,6 @@ sents = "webapp"
 is_custom_store = false
 
 [fastapi]
-nprobe = 4
 port = 8080
 
 [streamlit]
@@ -40,11 +52,6 @@ port = 8084
 [tts]
 cache_dir = "/home/ego/Github/corona_nlp_app/src/tts_cache"
 port = false
-
-[engine.summarizer_kwargs]
-ratio = 0.3
-use_first = true
-algorithm = "kmeans"
 
 [tts.init]
 apikey = "KimsTEZMLu5TPUmS62utcjbt-ywpu95inG1cvqW43ROL"

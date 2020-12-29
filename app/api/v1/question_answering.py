@@ -1,19 +1,23 @@
-from typing import Any, Dict, List, Union
+from typing import List, Union
 
 from app.api.schemas import (QuestionAnsweringInput, QuestionAnsweringOutput,
                              QuestionAnsweringWithContextInput,
                              QuestionAnsweringWithContextOutput,
                              SentenceSimilarityInput, SentenceSimilarityOutput)
 from app.api.v1.config import app_config, engine_config
-from coronanlp.engine import ScibertQuestionAnswering
-from coronanlp.utils import load_store
+from coronanlp.engine import ScibertQuestionAnswering  # type: ignore
+from coronanlp.utils import load_store  # type: ignore
 from fastapi import APIRouter  # type: ignore
-
 
 config = app_config('config.toml')
 is_custom_store = config['stores']['is_custom_store']
 
 engine_kwargs = engine_config('config.toml')
+question_answering_kwargs = engine_kwargs.pop('question_answering')
+NPROBE = question_answering_kwargs.pop('nprobe')
+TOP_K = question_answering_kwargs.pop('topk')
+TOP_P = question_answering_kwargs.pop('top_p')
+
 sents = engine_kwargs.pop('sents')
 index = engine_kwargs.pop('index')
 if not is_custom_store:
@@ -23,11 +27,8 @@ if not is_custom_store:
 engine = ScibertQuestionAnswering(sents, index, **engine_kwargs)
 router = APIRouter()
 
-FAISS_INDEX_NPROBE = config['fastapi']['nprobe']
-ENGINE_KWARGS = engine_kwargs
-
 encoder_config = engine.encoder.transformer.config
-compressor_config = engine._bert_summarizer.model.model.config
+compressor_config = engine.compressor.model.config
 decoder_config = engine.model.config
 
 
@@ -60,9 +61,9 @@ def engine_meta():
             'compressors': {
                 'bert_summarizer': {
                     'device': devices['summarizer_model_device'],
-                    'reduce_option': engine._bert_summarizer.reduce_option,
-                    'hidden': engine._bert_summarizer.hidden,
-                    'output_hidden': compressor_config.output_hidden_states
+                    'reduce_option': engine.compressor.pooling,
+                    'hidden': engine.compressor.hidden_layer,
+                    'output_hidden': True  # Default since using Compressor.
                 },
                 'freq_summarizer': {
                     'lang': engine.nlp.meta['lang'],
@@ -81,10 +82,12 @@ def engine_meta():
 def answer(question: str, topk: int = 5, top_p: int = 25, nprobe: int = 64,
            mode: str = 'bert') -> QuestionAnsweringOutput:
     """Answer the inputs and build the API data attributes."""
-    if nprobe is None:
-        nprobe = FAISS_INDEX_NPROBE
+    topk = TOP_K if topk < 3 else topk
+    top_p = TOP_P if top_p < 5 else top_p
+    nprobe = NPROBE if nprobe is None or nprobe < 8 else nprobe
 
-    pred = engine.answer(question, topk, top_p, nprobe, mode=mode)
+    pred = engine.answer(question, topk, top_p, nprobe, mode,
+                         **question_answering_kwargs)
     pred.popempty()
     sids = pred.sids.squeeze(0).tolist()
     pids = list(engine.sents.lookup(sids, mode='table').keys())

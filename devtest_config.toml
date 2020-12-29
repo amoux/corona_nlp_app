@@ -13,8 +13,8 @@ source = [ "/home/ego/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_med
 max_seq_length = 256
 do_lower_case = false
 model_device = "cpu"
-summarizer_hidden = -2
-summarizer_reduce = "mean"
+compressor_hidden_layer = -2
+compressor_pooling = "mean"
 lengths_from_sents = true
 
 [models]
