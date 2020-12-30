@@ -9,17 +9,16 @@ from coronanlp.engine import ScibertQuestionAnswering  # type: ignore
 from coronanlp.utils import load_store  # type: ignore
 from fastapi import APIRouter  # type: ignore
 
-config = app_config('config.toml')
-is_custom_store = config['stores']['is_custom_store']
-
-engine_kwargs = engine_config('config.toml')
+config = app_config()
+engine_kwargs = engine_config()
 question_answering_kwargs = engine_kwargs.pop('question_answering')
 NPROBE = question_answering_kwargs.pop('nprobe')
 TOP_K = question_answering_kwargs.pop('topk')
 TOP_P = question_answering_kwargs.pop('top_p')
-
 sents = engine_kwargs.pop('sents')
 index = engine_kwargs.pop('index')
+is_custom_store = config['stores']['is_custom_store']
+
 if not is_custom_store:
     sents = load_store('sents', store_name=sents)
     index = load_store('index', store_name=index)
@@ -122,8 +121,8 @@ def similar(text: Union[str, List[str]], top_p: int = 5, nprobe: int = 64,
     dist, sids = engine.similar(text, top_p=top_p, nprobe=nprobe)
     dist = dist.squeeze(0).tolist()
     sids = sids.squeeze(0).tolist()
-    pids = engine.decode(sids)
-    sentences = engine.get(sids)
+    pids = engine.sents.decode(sids)
+    sentences = engine.sents.get(sids)
     num_sents = len(sentences)
 
     return SentenceSimilarityOutput(

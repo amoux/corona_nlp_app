@@ -1,18 +1,22 @@
-
+import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, MutableMapping, Optional
 
 import toml
 
+CORONA_APP_CONFIG = os.environ.get("CORONA_APP_CONFIG")
 
-def app_config(toml_config: str = 'config.toml') -> Dict[str, Any]:
-    from app import __path__ as app_path
-    if not isinstance(app_path, list):
-        if hasattr(app_path, "_path"):
-            app_path = app_path._path[0]
-    else:
-        app_path = app_path[0]
-    app_home = Path(app_path).parent
-    config_file = app_home.joinpath(toml_config)
-    config_dict = toml.load(config_file.as_posix())
+
+def app_config(toml_config: Optional[str] = None) -> MutableMapping[str, Any]:
+    if toml_config is None:
+        toml_config = CORONA_APP_CONFIG
+    if toml_config is None:
+        raise Exception(
+            "CORONA_APP_CONFIG cannot be empty, make sure to "
+            "export CORONA_APP_CONFIG='path/to/my_config.toml'")
+    config_fp = Path(toml_config).absolute()
+    if not config_fp.is_file():
+        raise Exception(
+            f"Expected valid TOML config file, got: {config_fp.as_posix()}")
+    config_dict = toml.load(config_fp.as_posix())
     return config_dict

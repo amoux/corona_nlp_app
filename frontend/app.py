@@ -8,27 +8,28 @@ from coronanlp.utils import DataIO, clean_tokenization, normalize_whitespace
 from info import main_app_body, main_app_head
 from utils import MetadataReader, ModelAPI, app_config, count_words
 
-# Application specific parameters:
-# slider (min, max, default)
-TOPK_CONFIG = (1, 10, 5)
-TOP_P_CONFIG = (5, 100, 25)
-# minimum number of words to consider valid
-MIN_VALID_WORDS = 4
-# topic index to user at user welcome screen
-TOPIC_INDEX = 4
-
 config = app_config()
 
 NUM_PAPERS = config['cord']['num_papers']
 NUM_SENTS = config['cord']['num_sents']
-CORD_SUBSETS = ', '.join([f'`{s}`' for s in config['cord']['subsets']])
 CORD_VERSION = config['cord']['version']
 CORD_TEXT_SOURCE = config['cord']['text_source']
 CORD_SOURCE = config['cord']['source']
 CORD_METADATA = config['cord']['metadata']
+CORD_SUBSETS = config['cord']['subsets']
+if isinstance(CORD_SUBSETS, (list, tuple, set)):
+    CORD_SUBSETS = ", ".join([f'`{subset}`' for subset in CORD_SUBSETS])
 
+# Application specific parameters:
 QKNN_FILE = config['streamlit']['qknn_file']
 FRONTEND_PORT = config['streamlit']['port']
+# sliders (min, max, default-value)
+TOP_K_PARAMS = config['streamlit']['top_k_params']
+TOP_P_PARAMS = config['streamlit']['top_p_params']
+# minimum number of words to consider valid
+MIN_VALID_WORDS = config['streamlit']['min_valid_words']
+# topic index to user at welcome screen
+TOPIC_INDEX = config['streamlit']['topic_index']
 BACKEND_PORT = config['fastapi']['port']
 
 # Text to speech specific configuration.
@@ -73,13 +74,11 @@ def render_answer(question: str, output: Dict[str, Any]) -> Callable:
         question = normalize_whitespace(question)
         answer = clean_tokenization(output['answer'])
         context = clean_tokenization(output['context'])
-
         # markdown template formats:
         highlight, bold = '`{}`', '**{}**'
         answer_title_md = '### 💡 Answer'
         context_title_md = '### ⚗ Context'
         summary_title_md = '### 📃 Summary'
-
         if len(answer) == 0:
             st.markdown(summary_title_md)
             question_md = bold.format(question)
@@ -133,29 +132,42 @@ def render_titles_urls(titles_urls) -> Callable:
     return function
 
 
-def init(session, text, topk, top_p, mode, with_text_to_speech=False):
-    output_fn, about_fn, titles_urls_fn = None, None, None
+def init(
+    session: str,
+    text: str,
+    topk: int,
+    top_p: int,
+    mode: str,
+    return_text_to_speech=False,
+    return_titles_and_links=False,
+) -> Tuple[Any, ...]:
+
+    output_fn = None
+    about_fn = None
+    titles_urls_fn = None
+    paper_ids: Optional[List[int]] = None
+    context: Optional[str] = None
 
     if session == 'SentenceSimilarity':
         output = api.similar(text, top_p=top_p)
         if output is not None:
             # render similar sentences line by line.
             output_fn = render_similar(output['sents'])
-            titles_urls = meta_reader.load_urls(output['paper_ids'])
-            output.update({'num_papers': len(titles_urls)})
+            paper_ids = output['paper_ids']
+            output['num_papers'] = len(paper_ids)
             about_fn = render_about(output)
-            titles_urls_fn = render_titles_urls(titles_urls)
 
     elif session == 'QuestionAnswering':
         output = api.answer(text, topk=topk, top_p=top_p, mode=mode)
         num_words = count_words(text, min_word_length=2)
+
         if output is not None and num_words >= MIN_VALID_WORDS:
+            paper_ids = output['paper_ids']
+            context = output['context']
+            output['num_papers'] = len(paper_ids)
             with st.spinner("'Fetching results..."):
                 output_fn = render_answer(text, output)
-                titles_urls = meta_reader.load_urls(output['paper_ids'])
-                output.update({'num_papers': len(titles_urls)})
                 about_fn = render_about(output)
-                titles_urls_fn = render_titles_urls(titles_urls)
         else:
             st.sidebar.error(
                 f'Text needs to be at least {MIN_VALID_WORDS}'
@@ -163,28 +175,33 @@ def init(session, text, topk, top_p, mode, with_text_to_speech=False):
 
     elif session == 'Demo':
         output = cache_api_answer(text, topk, top_p, mode)
+        paper_ids = output['paper_ids']
+        context = output['context']
         output_fn = render_answer(text, output)
-        titles_urls = meta_reader.load_urls(output['paper_ids'])
-        output.update({'num_papers': len(titles_urls)})
+        output['num_papers'] = len(paper_ids)
         about_fn = render_about(output)
-        titles_urls_fn = render_titles_urls(titles_urls)
 
-        if TTS_PORT is not None and with_text_to_speech:
-            audio = api.tts(output['context'], prob=0.99, port=TTS_PORT)
-            if audio is not None:
-                fp = audio['audio_file_path']
-                st.audio(fp, format='audio/wav')
+    if return_titles_and_links:
+        try:
+            titles_urls = meta_reader.load_urls(paper_ids)
+        except Exception as e:
+            print(f'Loading titles and urls raised an exception {e}')
+        else:
+            titles_urls_fn = render_titles_urls(titles_urls)
+
+    # Both `Demo` and `QuestionAnswering` sessions have TTS enabled.
+    if return_text_to_speech and TTS_PORT is not None and context is not None:
+        try:
+            audio = api.tts(context, prob=0.99, port=TTS_PORT)
+        except Exception as e:
+            print(f'Loading audio for text-to-speech raised an exception, {e}')
+        else:
+            st.audio(audio['audio_file_path'], format='audio/wav')
 
     return output_fn, about_fn, titles_urls_fn
 
 
-def main():
-    main_app_head(st)
-
-    TEXT = st.empty()
-    renderOnOutput: Callable = st.empty()
-    renderOnAbout: Callable = st.empty()
-    renderOnTitlesUrls: Callable = st.empty()
+def onUserSession() -> Optional[Dict[str, Any]]:
 
     # OPTION 1: Select check-box to enable rendering of titles with outputs.
     is_render_titles_checked = st.sidebar.checkbox(
@@ -197,6 +214,7 @@ def main():
     if TTS_PORT is None:  # If not enabled let the user know that.
         tts_bool_value = True
         info_tts = "Text to speech feature is currently not enabled."
+
     is_tts_checked = st.sidebar.checkbox(info_tts, value=tts_bool_value)
 
     # OPTION 3: Select compression mode.
@@ -213,7 +231,7 @@ def main():
 
     # OPTION 4: Select number of k-nearest neighbors from slider.
     st.sidebar.header('TopK & TopP')
-    k, p = TOPK_CONFIG, TOP_P_CONFIG
+    k, p = TOP_K_PARAMS, TOP_P_PARAMS
     topk = st.sidebar.slider('number of answers', k[0], k[1], k[2])
     top_p = st.sidebar.slider('size of context', p[0], p[1], p[2])
 
@@ -233,21 +251,31 @@ def main():
     session_choice = st.sidebar.selectbox(info_session, session_modes)
     user_input = st.sidebar.text_area('💬 Type your question or sentence')
 
-    TEXT = demo_input if session_choice == 'Demo' else user_input
-    if TEXT is not None:
-        renderOnOutput, renderOnAbout, renderOnTitlesUrls = init(
-            session=session_choice,
-            text=TEXT,
-            topk=topk,
-            top_p=top_p,
-            mode=mode_selected,
-            with_text_to_speech=is_tts_checked,
-        )
-    if renderOnOutput is not None:
-        renderOnOutput()
-        renderOnAbout()
-    if is_render_titles_checked:
-        renderOnTitlesUrls()
+    text = demo_input if session_choice == 'Demo' else user_input
+    if text is not None:
+        return {
+            'session': session_choice,
+            'text': text,
+            'topk': topk,
+            'top_p': top_p,
+            'mode': mode_selected,
+            'return_text_to_speech': is_tts_checked,
+            'return_titles_and_links': is_render_titles_checked,
+        }
+
+
+def main():
+    main_app_head(st)
+
+    session = onUserSession()
+    if session is not None:
+        renderOnOutput, renderOnAbout, renderOnTitlesUrls = init(**session)
+
+        if renderOnOutput is not None:
+            renderOnOutput()
+            renderOnAbout()
+        if renderOnTitlesUrls is not None:
+            renderOnTitlesUrls()
 
     main_app_body(
         st=st,

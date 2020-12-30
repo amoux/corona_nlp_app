@@ -13,10 +13,10 @@ from coronanlp.tasks import TaskList
 from coronanlp.ukplab import SentenceEncoder
 from coronanlp.utils import save_stores
 
-from utils import root_config, save_custom_stores
+from utils import CORONA_APP_CONFIG, app_config, save_custom_stores
 
-CONFIG = root_config()
-CONFIG_FILE = './config.toml'
+CONFIG = app_config()
+CONFIG_FILE =  Path(CORONA_APP_CONFIG).name
 DEFAULT_DATADIR = './src/data/'
 DATADIR = Path(DEFAULT_DATADIR).absolute()
 

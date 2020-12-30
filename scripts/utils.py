@@ -1,15 +1,28 @@
+import os
 from pathlib import Path
-from typing import Dict, Union
+from typing import Any, Dict, MutableMapping, Optional, Union
 
 import coronanlp
 import faiss
 import numpy
 import toml
 
+CORONA_APP_CONFIG = os.environ.get("CORONA_APP_CONFIG")
 
-def root_config(fp='./config.toml'):
-    abs_fp = Path(fp).absolute()
-    return toml.load(abs_fp.as_posix())
+
+def app_config(toml_config: Optional[str] = None) -> MutableMapping[str, Any]:
+    if toml_config is None:
+        toml_config = CORONA_APP_CONFIG
+    if toml_config is None:
+        raise Exception(
+            "CORONA_APP_CONFIG cannot be empty, make sure to "
+            "export CORONA_APP_CONFIG='path/to/my_config.toml'")
+    config_fp = Path(toml_config).absolute()
+    if not config_fp.is_file():
+        raise Exception(
+            f"Expected valid TOML config file, got: {config_fp.as_posix()}")
+    config_dict = toml.load(config_fp.as_posix())
+    return config_dict
 
 
 def save_custom_stores(

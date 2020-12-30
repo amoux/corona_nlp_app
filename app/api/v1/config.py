@@ -1,9 +1,12 @@
+from typing import Any, MutableMapping, Optional
+
 from app.utils import app_config
 
 
-def engine_config(toml_config: str = 'cfg.toml') -> dict:
-    config = app_config(toml_config=toml_config)
+def engine_config(toml_config: Optional[str] = None
+                  ) -> MutableMapping[str, Any]:
 
+    config = app_config(toml_config=toml_config)
     encoder = config['models']['sentence_encoder']
     model = config['models']['question_answering']
     encoder = None if encoder == model else encoder

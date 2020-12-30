@@ -21,11 +21,11 @@ model_device = "cuda"
 
 [engine.question_answering]
 topk = 5
-top_p = 25
+top_p = 35
 nprobe = 128
 doc_stride = 1
-max_answer_len = 128
-max_seq_len = 500
+max_answer_len = 256
+max_seq_len = 256
 max_question_len = 256
 handle_impossible_answer = true
 
@@ -50,9 +50,13 @@ is_custom_store = false
 port = 8080
 
 [streamlit]
-qknn_file = "corona_nlp_app/src/QKNN.pkl"
-enable_tts = true
 port = 8084
+qknn_file = "corona_nlp_app/src/QKNN.pkl"
+enable_tts = false
+top_k_params = [3, 9, 5]
+top_p_params = [25, 75, 32]
+min_valid_words = 4
+topic_index = 5
 
 [tts]
 cache_dir = "corona_nlp_app/src/tts_cache"

@@ -1,7 +1,8 @@
+import os
 import re
 from pathlib import Path
 from string import punctuation
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, MutableMapping
 
 import pandas as pd
 import requests
@@ -12,10 +13,21 @@ APIOutput = Union[Dict[str, Any], None]
 
 REGX_URL = r"(((http|https)\:\/\/www\.)|((http|https)\:\/\/))|((http|https)\/{1,2})"
 
+CORONA_APP_CONFIG = os.environ.get("CORONA_APP_CONFIG")
 
-def app_config(toml_config: str = './config.toml') -> Dict[str, Any]:
-    config_file = Path(toml_config).absolute()
-    config_dict = toml.load(config_file.as_posix())
+
+def app_config(toml_config: Optional[str] = None) -> MutableMapping[str, Any]:
+    if toml_config is None:
+        toml_config = CORONA_APP_CONFIG
+    if toml_config is None:
+        raise Exception(
+            "CORONA_APP_CONFIG cannot be empty, make sure to "
+            "export CORONA_APP_CONFIG='path/to/my_config.toml'")
+    config_fp = Path(toml_config).absolute()
+    if not config_fp.is_file():
+        raise Exception(
+            f"Expected valid TOML config file, got: {config_fp.as_posix()}")
+    config_dict = toml.load(config_fp.as_posix())
     return config_dict
 
 
@@ -131,11 +143,16 @@ class MetadataReader(CORD19):
         for uid, url in zip(uids, urls):
             url = str(url).strip()
             uid = str(uid).strip()
-            if len(url) == 0: continue
-            if len(uid) == 0: continue
-            if uid == 'nan': continue
-            if uid not in self.uid2pid: continue
-            if uid in self.paper_urls: continue
+            if len(url) == 0:
+                continue
+            if len(uid) == 0:
+                continue
+            if uid == 'nan':
+                continue
+            if uid not in self.uid2pid:
+                continue
+            if uid in self.paper_urls:
+                continue
             if urls_from_doi:
                 m = re.match(REGX_URL, url)
                 if m is not None and m.group():

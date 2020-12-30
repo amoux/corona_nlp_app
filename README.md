@@ -1,18 +1,78 @@
 # CORD-19 Semantic Question Answering APP
 
-> Getting started
+TODO: finish documentation
+
+## Getting started
 
 Before starting the application we need to build the data stores. To build all the required sources simply run the following script (Make sure the paths pointing to the CORD-19 Dataset are absolute)
 
+- Download a dataset if you haven't already or skip and configure the file below if you have an existing dataset.
+
+> I highly recommend downloading the "smallest" release `2020-03-20` as shown below:
+
+```python
+from coronanlp.allenai import DownloadManager
+
+dm = DownloadManager()
+first_release = -1
+date = dm.all_release_dates()[first_release]
+arch = dm.download(date)
+...
+```
+
+Make your copy of the `config.toml` file holding the app's configuration. Where `my_config.toml` can be any name you want.
+
 ```bash
-python scripts/build_server_data.py \
-    -sample -1 \
-    -minlen 25 \
-    -index_start 1 \
-    -sort_first True \
-    -nlp_model en_core_sci_sm \
-    -config_file ./config.toml \
-    -data_dir ./src/data/
+cp config.toml my_config.toml
+```
+
+You can configure the arguments within the file if building a datastore within the file or from the script below.
+
+- If you have an existing CORD19-Dataset
+  - **source**: *A single string or a list of path(s) pointing to the directory holding the `*.json` files.*
+
+```toml
+[cord]
+version = "2020-03-20"  # Optional
+num_papers = 6641
+num_sents = 1003614
+index_start = 1
+sort_first = true
+text_source = "body_text"
+subsets = [ "biorxiv_medrxiv", "comm_use_subset", "noncomm_use_subset", "custom_license",]
+metadata = "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/metadata.csv"
+source = [
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/biorxiv_medrxiv",
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/comm_use_subset",
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/noncomm_use_subset",
+    "/home/user/.cache/coronanlp/semanticscholar/hr/2020-03-20/custom_license",
+]
+```
+
+Finally export the environment variable pointing the config file.
+
+> Or add the it to your `.bashrc` file
+
+```bash
+export CORONA_NLP_APP=/path/to/my_config.toml
+```
+
+Build a datastore from scratch, make sure to pass the `-arch_date 2020-03-20` argument along with the date of the dataset downloaded. `-type kaggle` builds a small sample tuned to answer questions from the challenge, it is also a small and friendly sample to start. All options are `none | server | kaggle`. If none, then `-sample <num_samples>` argument is required `-1` for all papers or `1000` for a random sample.
+
+> To see all available arguments execute the command: `python scripts/build_datastore.py -h`
+
+- store:
+  - sents : `coronanlp.SentenceStore`
+  - embed : `numpy.ndarray`
+  - index : `faiss.Index`
+
+```bash
+python scripts/build_datastore.py \
+    -type kaggle \
+    -arch_date 2020-03-20 \
+    -store_name webapp \
+    -encoder amoux/scibert_nli_squad \
+    -sort_first True
 ```
 
 Output based on `2,159,779` million sentences/vectors
