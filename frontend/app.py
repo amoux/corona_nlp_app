@@ -1,24 +1,15 @@
 import random
-import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
-from coronanlp.utils import DataIO, clean_tokenization, normalize_whitespace
+from coronanlp.utils import DataIO
 
-from info import main_app_body, main_app_head
-from utils import MetadataReader, ModelAPI, app_config, count_words
+from api import EngineAPI
+from info import (main_app_body, main_app_head, render_about, render_answer,
+                  render_similar, render_titles_urls)
+from utils import MetadataReader, app_config, count_words
 
 config = app_config()
-
-NUM_PAPERS = config['cord']['num_papers']
-NUM_SENTS = config['cord']['num_sents']
-CORD_VERSION = config['cord']['version']
-CORD_TEXT_SOURCE = config['cord']['text_source']
-CORD_SOURCE = config['cord']['source']
-CORD_METADATA = config['cord']['metadata']
-CORD_SUBSETS = config['cord']['subsets']
-if isinstance(CORD_SUBSETS, (list, tuple, set)):
-    CORD_SUBSETS = ", ".join([f'`{subset}`' for subset in CORD_SUBSETS])
 
 # Application specific parameters:
 QKNN_FILE = config['streamlit']['qknn_file']
@@ -38,10 +29,10 @@ if config['streamlit']['enable_tts']:
     unique_tts_port = config['tts']['port']
     TTS_PORT = unique_tts_port if unique_tts_port else BACKEND_PORT
 
-api = ModelAPI(port=BACKEND_PORT)
+engine_api = EngineAPI(BACKEND_PORT)
 meta_reader = MetadataReader(
-    metadata_path=CORD_METADATA,
-    source=CORD_SOURCE,
+    config['cord']['metadata'],
+    config['cord']['source'],
 )
 
 
@@ -52,8 +43,10 @@ def cache_qknn_topics(file_name=QKNN_FILE):
 
 
 @st.cache
-def cache_topic_data(cat: str, knnq: Dict[str, str],
-                     ) -> Tuple[List[str], str, int]:
+def cache_topic_data(
+    cat: str, knnq: Dict[str, str],
+) -> Tuple[List[str], str, int]:
+
     questions = knnq[cat]['questions']
     key_words = knnq[cat]['key_words']
     key_words = ', '.join(key_words)
@@ -64,72 +57,8 @@ def cache_topic_data(cat: str, knnq: Dict[str, str],
 @st.cache(allow_output_mutation=True)
 def cache_api_answer(question, topk, top_p, mode):
     """Cache and return the output answer for the selected topic question."""
-    output = api.answer(question, topk=topk, top_p=top_p, mode=mode)
+    output = engine_api.answer(question, topk=topk, top_p=top_p, mode=mode)
     return output
-
-
-def render_answer(question: str, output: Dict[str, Any]) -> Callable:
-    def function(question=question, output=output):
-        st.success("Done!")
-        question = normalize_whitespace(question)
-        answer = clean_tokenization(output['answer'])
-        context = clean_tokenization(output['context'])
-        # markdown template formats:
-        highlight, bold = '`{}`', '**{}**'
-        answer_title_md = '### 💡 Answer'
-        context_title_md = '### ⚗ Context'
-        summary_title_md = '### 📃 Summary'
-        if len(answer) == 0:
-            st.markdown(summary_title_md)
-            question_md = bold.format(question)
-            st.write('> ', context.replace(question, question_md, 1))
-        else:
-            try:
-                match = re.search(answer, context)
-                match.span()
-            except Exception as e:
-                print(f'Match generated an exception for {answer}: {e}')
-                pass
-            finally:
-                st.markdown(answer_title_md)
-                st.write('> ', answer.capitalize())
-                st.markdown(context_title_md)
-                context = context.replace(answer, highlight.format(answer), -1)
-                if not question.endswith('?'):
-                    question = f'{question}?'
-                question = bold.format(question)
-                context = question.strip() + "  " + context.strip()
-                st.write('> ', context)
-    return function
-
-
-def render_about(output: Dict[str, Any]) -> Callable:
-    def function(output=output):
-        nsents, npapers = output['num_sents'], output['num_papers']
-        out1 = f'Answer based on {NUM_SENTS}/***{nsents}*** sentences '
-        out2 = f'obtained from {NUM_PAPERS}/***{npapers}*** papers:'
-        st.markdown('---')
-        st.markdown(out1 + out2)
-    return function
-
-
-def render_similar(sents: List[str]) -> Callable:
-    def function(sents=sents):
-        st.markdown('### Similar Sentences')
-        st.markdown('---')
-        for sequence in sents:
-            sequence = normalize_whitespace(sequence)
-            st.markdown(f'- {sequence}')
-    return function
-
-
-def render_titles_urls(titles_urls) -> Callable:
-    def function(titles_urls=titles_urls):
-        for key in titles_urls:
-            title, url = key['title'], key['url']
-            st.markdown(f"- [{title}]({url})")
-            st.sidebar.markdown('---')
-    return function
 
 
 def init(
@@ -145,54 +74,61 @@ def init(
     output_fn = None
     about_fn = None
     titles_urls_fn = None
-    paper_ids: Optional[List[int]] = None
+    pids: Optional[List[int]] = None
     context: Optional[str] = None
 
     if session == 'SentenceSimilarity':
-        output = api.similar(text, top_p=top_p)
+        output = engine_api.similar(text, top_p=top_p)
         if output is not None:
             # render similar sentences line by line.
-            output_fn = render_similar(output['sents'])
-            paper_ids = output['paper_ids']
-            output['num_papers'] = len(paper_ids)
-            about_fn = render_about(output)
+            pids = output.pids.squeeze(0).tolist()
+            sentences = output.sentences
+            output_fn = render_similar(st, sentences)
+            nsids, npids = output.sids.size, len(set(pids))
+            about_fn = render_about(st, nsids, npids)
 
     elif session == 'QuestionAnswering':
-        output = api.answer(text, topk=topk, top_p=top_p, mode=mode)
         num_words = count_words(text, min_word_length=2)
-
-        if output is not None and num_words >= MIN_VALID_WORDS:
-            paper_ids = output['paper_ids']
-            context = output['context']
-            output['num_papers'] = len(paper_ids)
-            with st.spinner("'Fetching results..."):
-                output_fn = render_answer(text, output)
-                about_fn = render_about(output)
+        if num_words < MIN_VALID_WORDS:
+            e = 'Text needs to be at least {} words long, and not {}'
+            st.sidebar.error(e.format(MIN_VALID_WORDS, num_words))
         else:
-            st.sidebar.error(
-                f'Text needs to be at least {MIN_VALID_WORDS}'
-                f' words long, and not {num_words}')
+            output = engine_api.answer(text, topk=topk, top_p=top_p, mode=mode)
+            if output is not None:
+                with st.spinner('Fetching results...'):
+                    pids = output.pids.squeeze(0).tolist()
+                    context = output.context
+                    answer = output.a[output.topk(0)]
+                    nsids, npids = output.sids.size, len(set(pids))
+                    # Do not cache outputs from user's questions.
+                    output_fn = render_answer(st, text, answer, context)
+                    about_fn = render_about(st, nsids, npids)
+            else:
+                e = 'There was an ⚠ issue in trying to answer your question.'
+                st.sidebar.error(e)
 
     elif session == 'Demo':
+        # Cache the outputs from the demo questions.
         output = cache_api_answer(text, topk, top_p, mode)
-        paper_ids = output['paper_ids']
-        context = output['context']
-        output_fn = render_answer(text, output)
-        output['num_papers'] = len(paper_ids)
-        about_fn = render_about(output)
+        pids = output.pids.squeeze(0).tolist()
+        context = output.context
+        answer = output.a[output.topk(0)]
+        output_fn = render_answer(st, text, answer, context)
+        nsids, npids = output.sids.size, len(set(pids))
+        about_fn = render_about(st, nsids, npids)
 
-    if return_titles_and_links:
+    if return_titles_and_links and pids is not None:
         try:
-            titles_urls = meta_reader.load_urls(paper_ids)
+            titles_urls = meta_reader.load_urls(pids)
         except Exception as e:
             print(f'Loading titles and urls raised an exception {e}')
         else:
-            titles_urls_fn = render_titles_urls(titles_urls)
+            titles_urls_fn = render_titles_urls(st, titles_urls)
 
     # Both `Demo` and `QuestionAnswering` sessions have TTS enabled.
     if return_text_to_speech and TTS_PORT is not None and context is not None:
         try:
-            audio = api.tts(context, prob=0.99, port=TTS_PORT)
+            audio = engine_api.tts(context, prob=0.99, port=TTS_PORT)
         except Exception as e:
             print(f'Loading audio for text-to-speech raised an exception, {e}')
         else:
@@ -277,14 +213,7 @@ def main():
         if renderOnTitlesUrls is not None:
             renderOnTitlesUrls()
 
-    main_app_body(
-        st=st,
-        ds_version=CORD_VERSION,
-        text_keys=CORD_TEXT_SOURCE,
-        subsets=CORD_SUBSETS,
-        num_papers=NUM_PAPERS,
-        num_sents=NUM_SENTS,
-    )
+    main_app_body(st)
 
 
 if __name__ == '__main__':

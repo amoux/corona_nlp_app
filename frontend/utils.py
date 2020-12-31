@@ -2,14 +2,11 @@ import os
 import re
 from pathlib import Path
 from string import punctuation
-from typing import Any, Dict, List, Optional, Union, MutableMapping
+from typing import Any, Dict, List, MutableMapping, Optional, Union
 
 import pandas as pd
-import requests
 import toml
 from coronanlp.dataset import CORD19, clean_tokenization, normalize_whitespace
-
-APIOutput = Union[Dict[str, Any], None]
 
 REGX_URL = r"(((http|https)\:\/\/www\.)|((http|https)\:\/\/))|((http|https)\/{1,2})"
 
@@ -36,76 +33,6 @@ def count_words(string, min_word_length=2) -> int:
     words = ["".join([char for char in token if char not in punctuation])
              for token in tokens if len(token) > min_word_length]
     return len(words)
-
-
-class ModelAPI:
-    endpoints = {
-        'answer': 'question/',
-        'context': 'question-with-context/',
-        'similar': 'sentence-similarity/',
-        'tts': 'text-to-speech/',
-        'meta': 'engine-meta/',
-    }
-
-    def __init__(self, port: Union[str, int], ip: str = "127.0.0.1"):
-        self.port = str(port) if isinstance(port, int) else port
-        self.url = 'http://{}:{}'.format(ip, "{port}/{endpoint}")
-
-    def okay(self, endpoint: str, inputs=None, port=None):
-        port = self.port if port is None else port
-        endpoint = self.url.format(port=port, endpoint=endpoint)
-        response = requests.get(endpoint) if inputs is None \
-            else requests.post(endpoint, json=inputs)
-        return response
-
-    def meta(self, port=None) -> APIOutput:
-        endpoint = self.endpoints['meta']
-        response = self.okay(endpoint, port=port)
-        if response.status_code == 200:
-            return response.json()
-        return None
-
-    def answer(self, question: str, topk=15, top_p=30, nprobe=64, mode='bert',
-               context: Optional[str] = None, port=None) -> APIOutput:
-        """Return the predicted answer given the question and k-theresholds."""
-        endpoint = None
-        inputs = {'question': question}
-
-        if context is not None and isinstance(context, str):
-            endpoint = self.endpoints['context']
-            inputs.update({'context': context})
-        else:
-            endpoint = self.endpoints['answer']
-            inputs.update({'topk': topk, 'top_p': top_p,
-                           'nprobe': nprobe, 'mode': mode})
-
-        response = self.okay(endpoint, inputs=inputs, port=port)
-        if response.status_code == 200:
-            return response.json()
-        return None
-
-    def similar(
-        self, text: Union[str, List[str]], top_p=5, nprobe=64, port=None,
-    ) -> APIOutput:
-        """Return top-k nearest sentences given a single sentence sequence.
-
-        :param sentence: A single string sequence or a list of strings.
-        """
-        endpoint = self.endpoints['similar']
-        inputs = {'text': text, 'top_p': top_p, 'nprobe': nprobe}
-        response = self.okay(endpoint, inputs=inputs, port=port)
-        if response.status_code == 200:
-            return response.json()
-        return None
-
-    def tts(self, text: str, prob=0.99, port=None) -> APIOutput:
-        """Return the file path of the synthesized text to audio of speech."""
-        endpoint = self.endpoints['tts']
-        inputs = {'text': text, 'prob': prob}
-        response = self.okay(endpoint, inputs=inputs, port=port)
-        if response.status_code == 200:
-            return response.json()
-        return None
 
 
 class MetadataReader(CORD19):
@@ -136,7 +63,6 @@ class MetadataReader(CORD19):
                 "under the column `< url >` or format if `< doi >` is the "
                 "column name as e.g., col:doi `10.1007/s00134-020-05985-9`"
             )
-
         # This has to be the ugliest piece of **** code
         # - sorry to anyone looking at this but this piece
         # of **** code works, I hope to fix this one day.

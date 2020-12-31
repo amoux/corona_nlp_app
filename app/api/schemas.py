@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple, Dict, Any
 
 from pydantic import BaseModel, Field
 
@@ -18,12 +18,13 @@ class QuestionAnsweringInput(QuestionAnsweringBase):
     nprobe: int = 64
 
 
-class QuestionAnsweringOutput(QuestionAnsweringBase):
-    answer: str
-    context: str
-    num_sents: int
-    titles: List[str]
-    paper_ids: List[int]
+class QuestionAnsweringOutput(BaseModel):
+    q: Union[str, List[str]]
+    c: Union[str, List[str]]
+    sids: List[List[int]]
+    dist: List[List[float]]
+    pids: List[List[int]]
+    answers: List[Dict[str, Any]]
 
 
 class QuestionAnsweringWithContextInput(QuestionAnsweringBase):
@@ -42,10 +43,10 @@ class SentenceSimilarityInput(BaseModel):
 
 
 class SentenceSimilarityOutput(BaseModel):
-    num_sents: int
-    sents: List[str]
-    dists: List[float]
-    paper_ids: List[int]
+    sids: List[List[int]]
+    dist: List[List[float]]
+    pids: List[List[int]]
+    sentences: List[str]
 
 
 class TextToSpeechInput(BaseModel):

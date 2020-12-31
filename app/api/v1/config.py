@@ -17,6 +17,7 @@ def engine_config(toml_config: Optional[str] = None
             'sents': config['stores']['sents'],
             'index': config['stores']['index'],
             'encoder': encoder,
+            'cord19': False,  # Disable initialization.
             'model': model,
             'nlp_model': config['models']['spacy_nlp']
         }

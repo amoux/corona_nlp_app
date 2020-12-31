@@ -78,58 +78,71 @@ def engine_meta():
     return meta
 
 
-def answer(question: str, topk: int = 5, top_p: int = 25, nprobe: int = 64,
-           mode: str = 'bert') -> QuestionAnsweringOutput:
-    """Answer the inputs and build the API data attributes."""
+def corona_question_answering(
+    question: str,
+    topk: int = 5,
+    top_p: int = 25,
+    nprobe: int = 64,
+    mode: str = 'bert'
+) -> QuestionAnsweringOutput:
+
     topk = TOP_K if topk < 3 else topk
     top_p = TOP_P if top_p < 5 else top_p
     nprobe = NPROBE if nprobe is None or nprobe < 8 else nprobe
+    kwargs = question_answering_kwargs
 
-    pred = engine.answer(question, topk, top_p, nprobe, mode,
-                         **question_answering_kwargs)
-    pred.popempty()
-    sids = pred.sids.squeeze(0).tolist()
-    pids = list(engine.sents.lookup(sids, mode='table').keys())
-    titles = list(engine.cord19.titles(pids))
-    num_sents = len(sids)
+    pred = engine.answer(question, topk, top_p, nprobe, mode, **kwargs)
 
-    # TODO: The engine is now able to provide multiple answers! The previous
-    # engine could only provide a single answer. Which means I need to update.
-    # the methods that use the inputs or/and outputs by this method.
-
-    answer = pred[0].answer
-    context = pred.context
+    question = pred.q
+    context = pred.c
+    sids = pred.sids.tolist()
+    dist = pred.dist.tolist()
+    pids = pred.pids.tolist()
+    answers = list(map(lambda X: dict(X._asdict()), pred))
 
     return QuestionAnsweringOutput(
-        question=question,
-        answer=answer,
-        context=context,
-        num_sents=num_sents,
-        titles=titles,
-        paper_ids=pids,
+        q=question,
+        c=context,
+        sids=sids,
+        dist=dist,
+        pids=pids,
+        answers=answers,
     )
 
 
-def decode(question: str, context: str) -> QuestionAnsweringWithContextOutput:
+def base_question_answering(
+        question: str,
+        context: str,
+) -> QuestionAnsweringWithContextOutput:
+
     prediction = engine.pipeline(question=question, context=context)
     answer = prediction['answer']
-    return QuestionAnsweringWithContextOutput(answer=answer, context=context)
+
+    return QuestionAnsweringWithContextOutput(
+        answer=answer,
+        context=context,
+    )
 
 
-def similar(text: Union[str, List[str]], top_p: int = 5, nprobe: int = 64,
-            ) -> SentenceSimilarityOutput:
+def faiss_nearest_neighbors_search(
+    text: Union[str, List[str]],
+    top_p: int = 5,
+    nprobe: int = 64,
+) -> SentenceSimilarityOutput:
+
     dist, sids = engine.similar(text, top_p=top_p, nprobe=nprobe)
-    dist = dist.squeeze(0).tolist()
-    sids = sids.squeeze(0).tolist()
-    pids = engine.sents.decode(sids)
-    sentences = engine.sents.get(sids)
-    num_sents = len(sentences)
+
+    flat_sids = sids.squeeze(0).tolist()
+    sentences = engine.sents.get(flat_sids)
+    pids = [engine.sents.decode(flat_sids)]
+    dist = dist.tolist()
+    sids = sids.tolist()
 
     return SentenceSimilarityOutput(
-        num_sents=num_sents,
-        sents=sentences,
-        dists=dist,
-        paper_ids=pids,
+        sids=sids,
+        dist=dist,
+        pids=pids,
+        sentences=sentences,
     )
 
 
@@ -146,7 +159,9 @@ def get_engine_meta():
 def question(input: QuestionAnsweringInput):
     if input.question:
         input_dict = input.dict()
-        return answer(**input_dict)
+        return corona_question_answering(
+            **input_dict
+        )
 
 
 @router.post(
@@ -157,7 +172,9 @@ def question(input: QuestionAnsweringInput):
 def question_with_context(input: QuestionAnsweringWithContextInput):
     if input.question and input.context:
         input_dict = input.dict()
-        return decode(**input_dict)
+        return base_question_answering(
+            **input_dict
+        )
 
 
 @router.post(
@@ -168,4 +185,6 @@ def question_with_context(input: QuestionAnsweringWithContextInput):
 def sentence_similarity(input: SentenceSimilarityInput):
     if input.text:
         input_dict = input.dict()
-        return similar(**input_dict)
+        return faiss_nearest_neighbors_search(
+            **input_dict
+        )
