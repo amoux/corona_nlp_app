@@ -81,8 +81,9 @@ class EngineAPI:
         question: str,
         topk: int = 15,
         top_p: int = 30,
-        nprobe: int = 64,
         mode: str = 'bert',
+        ratio: float = 0.2,
+        nprobe: int = 64,
         context: Optional[str] = None,
         port: Optional[Union[int, str]] = None
     ) -> Optional[QuestionAnsweringOutput]:
@@ -99,6 +100,7 @@ class EngineAPI:
             inputs['top_p'] = top_p
             inputs['nprobe'] = nprobe
             inputs['mode'] = mode
+            inputs['ratio'] = ratio
 
         response = self.okay(endpoint, inputs=inputs, port=port)
         if response.status_code == 200:
@@ -106,7 +108,11 @@ class EngineAPI:
         return None
 
     def similar(
-        self, text: Union[str, List[str]], top_p=5, nprobe=64, port=None,
+        self,
+        text: Union[str, List[str]],
+        top_p: int = 5,
+        nprobe: int = 64,
+        port: Optional[Union[str, int]] = None,
     ) -> Optional[SentenceSimilarityOutput]:
         """Return top-k nearest sentences given a single sentence sequence.
 

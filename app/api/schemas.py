@@ -13,9 +13,10 @@ class QuestionAnsweringBase(BaseModel):
 
 class QuestionAnsweringInput(QuestionAnsweringBase):
     topk: int = 5
-    top_p: int = 25
+    top_p: int = 35
     mode: str = 'bert'
-    nprobe: int = 64
+    nprobe: int = 128
+    ratio: float = 0.2
 
 
 class QuestionAnsweringOutput(BaseModel):

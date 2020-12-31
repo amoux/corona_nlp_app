@@ -73,7 +73,13 @@ def engine_meta():
                 }
             }
         },
-        'devices': devices
+        'devices': devices,
+        'params': {
+            'max_seq_len': engine.max_seq_length,
+            'compressor_ratio': engine.compressor.cluster.ratio,
+            'compressor_pooling': engine.compressor.pooling,
+            'compressor_use_first': engine.compressor.cluster.use_first
+        }
     }
     return meta
 
@@ -83,13 +89,16 @@ def corona_question_answering(
     topk: int = 5,
     top_p: int = 25,
     nprobe: int = 64,
-    mode: str = 'bert'
+    mode: str = 'bert',
+    ratio: float = 0.2
 ) -> QuestionAnsweringOutput:
 
     topk = TOP_K if topk < 3 else topk
     top_p = TOP_P if top_p < 5 else top_p
     nprobe = NPROBE if nprobe is None or nprobe < 8 else nprobe
     kwargs = question_answering_kwargs
+
+    engine.compressor.cluster.ratio = ratio
 
     pred = engine.answer(question, topk, top_p, nprobe, mode, **kwargs)
 

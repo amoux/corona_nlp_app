@@ -19,10 +19,6 @@ def main_app_head(st):
     # Content displayed at the top of the page (Welcome screen).
     st.title('⚕ COVID-19')
     st.header('Semantic Question Answering System')
-    st.sidebar.title('Built with state-of-the-art Transformer models 🤗')
-    st.sidebar.markdown("> The CORD-19 dataset represents the most extensive "
-                        "machine-readable coronavirus literature collection "
-                        "available for data mining to date")
     st.markdown('> Use this as a tool to search and explore `COVID-19` '
                 'research literature with natural language.')
     st.markdown('- Open the sidebar **>** (↖ *top-left*) to enter a'
@@ -31,21 +27,30 @@ def main_app_head(st):
     st.markdown('---')
     st.markdown('*Questions extracted from the literature, sorted'
                 ' based on similarity and grouped via clustering*.')
+
+
+def sidebar_head(st):
+    st.sidebar.markdown('### Built with state-of-the-art Transformer models 🤗')
+    st.sidebar.markdown(
+        "> The *CORD-19* dataset represents the most extensive "
+        "machine-readable coronavirus literature collection "
+        "available for data mining to date")
     st.sidebar.markdown('---')
-    st.sidebar.title('Say Something to Coronavirus Literature')
+    st.sidebar.markdown('#### Say Something to Coronavirus Literature')
     st.sidebar.markdown('- Articulating to it in sentences will '
                         'usually produce better results than keywords.')
     st.sidebar.markdown('- The model is case sensitive. Indicating that '
-                        'upper/lower case letters affect the "meaning".')
-    st.sidebar.header('Settings')
+                        'upper/lower case letters affect the meaning.')
+    st.sidebar.markdown('#### Settings')
 
 
-def main_app_body(st):
-    # SIDEBAR BOTTOM INFO:
+def sidebar_tail(st):
     st.sidebar.markdown('🗃 *The data for all outputs, questions, and links '
                         'to the articles in this application is entirely from '
                         'the CORD-19 dataset.*')
-    st.sidebar.markdown('---')
+
+
+def main_app_body(st):
     # Content displayed at the bottom of the page:
     st.markdown('---')
     st.markdown('#### Outputs based on the following:')
