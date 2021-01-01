@@ -53,8 +53,8 @@ port = 8080
 port = 8084
 qknn_file = "corona_nlp_app/src/QKNN.pkl"
 enable_tts = false
-top_k_params = [3, 10, 5]
-top_p_params = [25, 75, 35]
+top_k_params = [3, 5, 9]
+top_p_params = [25, 35, 45]
 ratio_params = [0.1, 0.2, 0.3]
 min_valid_words = 4
 topic_index = 5
@@ -64,9 +64,11 @@ cache_dir = "corona_nlp_app/src/tts_cache"
 port = false
 
 [tts.init]
-apikey = "<TTS-API-KEY>"
 disable_ssl = false
-url = "<IAM-IBM-TTS-API-URL>"
+apikey = "<TTS-API-KEY>"
+http_url = "https://api."
+wss_url = "wss://api."
+default_url = "wss_url"
 
 [tts.voice]
 customizable = true
