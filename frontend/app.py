@@ -136,14 +136,16 @@ def init(
         else:
             titles_urls_fn = render_titles_urls(st, titles_urls)
 
-    # Both `Demo` and `QuestionAnswering` sessions have TTS enabled.
     if return_text_to_speech and TTS_PORT is not None and context is not None:
-        try:
-            audio = engine_api.tts(context, prob=0.99, port=TTS_PORT)
-        except Exception as e:
-            print(f'Loading audio for text-to-speech raised an exception, {e}')
-        else:
-            st.audio(audio['audio_file_path'], format='audio/wav')
+        msg = 'Fetching synthesized text from IBM Watson. Please wait ⌛..'
+        with st.spinner(msg):
+            try:
+                audio = engine_api.tts(context, prob=0.99, port=TTS_PORT)
+            except Exception as e:
+                print(f'TTS loading raised an exception, {e}')
+                st.error('There was an issue with text-to-speech service 🤔.')
+            else:
+                st.audio(audio['audio_file_path'], format='audio/wav')
 
     return output_fn, about_fn, titles_urls_fn
 
@@ -189,10 +191,13 @@ def onUserSession() -> Optional[Dict[str, Any]]:
     r, r_v = RATIO_PARAMS, RATIO_INIT_VALUE
     ratio = st.sidebar.select_slider('ratio', options=r, value=r_v)
 
+    if is_tts_checked and ratio == max(r):
+        ratio = r[r.index(max(r)) - 1]
+
     # OPTION 5: Select number of k-nearest neighbors from slider.
     k, p = TOP_K_PARAMS, TOP_P_PARAMS
-    top_p = st.sidebar.slider('top-p', p[0], p[1], p[2])
-    topk = st.sidebar.slider('top-k', k[0], k[1], k[2])
+    top_p = st.sidebar.select_slider('top-p', options=p, value=p[1])
+    topk = st.sidebar.select_slider('top-k', options=k, value=k[1])
 
     # END: Render sidebar text (before diplaying results)
     sidebar_tail(st)

@@ -1,15 +1,50 @@
 import json
 from pathlib import Path
-from typing import IO, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import ibm_cloud_sdk_core.authenticators as ibm_auth  # type: ignore
 import ibm_cloud_sdk_core.detailed_response as ibm_resp  # type: ignore
 import spacy  # type: ignore
 from ibm_watson import TextToSpeechV1  # type: ignore
+from ibm_watson.websocket import SynthesizeCallback  # type: ignore
 from pydub import AudioSegment, playback  # type: ignore
 from spacy.language import Language  # type: ignore
 
 from .utils import is_valid_paragraph
+
+
+class TTSWebSocketCallback(SynthesizeCallback):
+    def __init__(self, audio_fp: Path):
+        SynthesizeCallback.__init__(self)
+        self.audio_stream = audio_fp.open('ab')
+        self.stream_info = {
+            'connected': False,
+            'audio_ready': False,
+            'file_path': audio_fp.absolute()
+        }
+
+    @property
+    def is_audio_ready(self):
+        return self.stream_info['audio_ready']
+
+    def on_connected(self):
+        self.stream_info['connected'] = True
+
+    def on_error(self, error):
+        self.stream_info['error'] = error
+
+    def on_content_type(self, content_type):
+        self.stream_info['content_type'] = content_type
+
+    def on_timing_information(self, timing_information):
+        self.stream_info['timing'] = timing_information
+
+    def on_audio_stream(self, audio_stream):
+        self.audio_stream.write(audio_stream)
+
+    def on_close(self):
+        self.audio_stream.close()
+        self.stream_info['audio_ready'] = True
 
 
 class IBMTextToSpeech:
@@ -47,8 +82,9 @@ class IBMTextToSpeech:
         self.auto_save = auto_save
         self.audio_format = audio_format
         self.voice = voice
-        self.text_to_speech = TextToSpeechV1(ibm_auth.IAMAuthenticator(apikey))
-        self.text_to_speech.set_service_url(url)
+        self.service = TextToSpeechV1(ibm_auth.IAMAuthenticator(apikey))
+        self.url = url
+        self.service.set_service_url(url)
         self.disable_ssl() if disable_ssl else self.enable_ssl()
         self.nlp = spacy_nlp if isinstance(spacy_nlp, Language) \
             else spacy.load(nlp_model)
@@ -56,16 +92,16 @@ class IBMTextToSpeech:
             self.load_meta(meta_id, load_meta_files=load_meta_files)
 
     def disable_ssl(self) -> None:
-        self.text_to_speech.set_disable_ssl_verification(True)
+        self.service.set_disable_ssl_verification(True)
 
     def enable_ssl(self) -> None:
-        self.text_to_speech.set_disable_ssl_verification(False)
+        self.service.set_disable_ssl_verification(False)
 
     def is_paragraph_valid(self, sequence: str) -> bool:
         return is_valid_paragraph(sequence, model_name_or_nlp=self.nlp)
 
     def list_voices(self) -> List[Dict[str, str]]:
-        return self.text_to_speech.list_voices().get_result()["voices"]
+        return self.service.list_voices().get_result()["voices"]
 
     def delete_query(self, index: int, del_audio_file=True, update_meta=True):
         """Properly delete an existing query + audio file in a session.
@@ -182,15 +218,15 @@ class IBMTextToSpeech:
                 break
         return similar
 
-    def synthesize(self, text: str, audio_format: Optional[str] = None
-                   ) -> ibm_resp.DetailedResponse:
+    def synthesize(
+        self, text: str, audio_format: Optional[str] = None,
+    ) -> ibm_resp.DetailedResponse:
+
         if audio_format is None:
             audio_format = self.audio_format
-        return self.text_to_speech.synthesize(
-            text=text,
-            voice=self.voice,
-            accept=self.audio_format
-        )
+        return self.service.synthesize(text=text,
+                                       voice=self.voice,
+                                       accept=self.audio_format)
 
     def play_synth(self, file: Path, suffix: str = None) -> None:
         sound_file = self.load_synth(file=file, suffix=suffix)
@@ -215,7 +251,15 @@ class IBMTextToSpeech:
             result = self.synthesize(text).get_result()
             audio_file.write(result.content)
 
-    def encode_tts(self, text: str, k=0.99, play_file=True, suffix=None):
+    def encode_tts(
+            self,
+            text: str,
+            k: float = 0.99,
+            play_file: bool = True,
+            suffix: Optional[str] = None,
+            websocket: bool = False,
+    ) -> Optional[Path]:
+
         assert isinstance(self._cachedir, Path)
         if suffix is None:
             suffix = self.audio_file_suffix
@@ -234,19 +278,30 @@ class IBMTextToSpeech:
             name = f'{index}_speech.{suffix}'
             file = self._cachedir.joinpath(name)
             self.queries[index] = {'file': name, 'text': text}
-            self.write_synth(file, text)
+            if not websocket:
+                self.write_synth(file, text)
+            else:
+                callback = TTSWebSocketCallback(file)
+                self.service.synthesize_using_websocket(
+                    text=text,
+                    synthesize_callback=callback,
+                    accept=self.audio_format,
+                    voice=self.voice,
+                )
+                stream_info = callback.stream_info
+                if not stream_info['audio_ready']:
+                    error = 'WebSocket stream raised an exception: {}'
+                    raise Exception(error.format(stream_info['error']))
             if self.auto_save:
                 self.save_meta()
-        if file is not None:  # play existing or cached file.
-            if play_file:
-                self.play_synth(file, suffix=suffix)
-            else:
-                return file
+        if file is not None and play_file:  # play existing or cached file.
+            self.play_synth(file, suffix=suffix)
+        return file
 
     def __getitem__(self, item):
         return self.queries[item]
 
-    def __call__(self, text: str, k=0.99, play_file=True):
+    def __call__(self, text: str, k=0.99, play_file=True, websocket=False):
         """Encode text to speech and play or return the path of the audio file.
 
         Returns the path to the audio file if play_file is set to False.
@@ -255,4 +310,9 @@ class IBMTextToSpeech:
         if play_file:
             self.encode_tts(text, k)
         else:
-            return self.encode_tts(text, k, play_file=False)
+            return self.encode_tts(
+                text,
+                k=k,
+                play_file=False,
+                websocket=websocket
+            )
