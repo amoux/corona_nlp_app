@@ -15,24 +15,24 @@ source = [
 ]
 
 [engine]
-max_seq_length = 512
+max_seq_length = 384
 do_lower_case = false
 model_device = "cuda"
 
 [engine.question_answering]
 topk = 5
-top_p = 35
+top_p = 25
 nprobe = 128
-doc_stride = 1
+doc_stride = 128
 max_answer_len = 256
-max_seq_len = 256
-max_question_len = 256
+max_seq_len = 384
+max_question_len = 64
 handle_impossible_answer = true
 
 [engine.compressor]
 hidden_layer = -2
 pooling = "mean"
-ratio = 0.3
+ratio = 0.2
 use_first = true
 
 [models]
@@ -53,8 +53,9 @@ port = 8080
 port = 8084
 qknn_file = "corona_nlp_app/src/QKNN.pkl"
 enable_tts = false
-top_k_params = [3, 9, 5]
-top_p_params = [25, 75, 32]
+top_k_params = [3, 10, 5]
+top_p_params = [25, 75, 35]
+ratio_params = [0.1, 0.2, 0.3]
 min_valid_words = 4
 topic_index = 5
 

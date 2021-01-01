@@ -98,15 +98,18 @@ def init(
             e = 'Text needs to be at least {} words long, and not {}'
             st.sidebar.error(e.format(MIN_VALID_WORDS, num_words))
         else:
+            # Do not cache outputs from user's questions.
             output = engine_api.answer(text, topk, top_p, mode, ratio)
             if output is not None:
                 with st.spinner('Fetching results...'):
                     pids = output.pids.squeeze(0).tolist()
                     context = output.context
                     answer = output.a[output.topk(0)]
-                    nsids, npids = len(output.c), len(set(pids))
-                    # Do not cache outputs from user's questions.
                     output_fn = render_answer(st, text, answer, context)
+
+                    n0, n1 = output.sids.size, len(output.c)
+                    nsids = f'**({n0}-{n0 - n1})**'
+                    npids = f'**{len(set(pids))}**'
                     about_fn = render_about(st, nsids, npids)
             else:
                 e = 'There was an ⚠ issue in trying to answer your question.'
@@ -119,7 +122,10 @@ def init(
         context = output.context
         answer = output.a[output.topk(0)]
         output_fn = render_answer(st, text, answer, context)
-        nsids, npids = len(output.c), len(set(pids))
+
+        n0, n1 = output.sids.size, len(output.c)
+        nsids = f'**({n0}-{n0 - n1})**'
+        npids = f'**{len(set(pids))}**'
         about_fn = render_about(st, nsids, npids)
 
     if return_titles_and_links and pids is not None:

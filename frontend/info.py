@@ -1,7 +1,8 @@
 import re
-from typing import Callable, List
+from typing import Any, Callable, List
 
 from coronanlp.utils import clean_tokenization, normalize_whitespace
+
 from utils import app_config
 
 config = app_config()
@@ -45,7 +46,7 @@ def sidebar_head(st):
 
 
 def sidebar_tail(st):
-    st.sidebar.markdown('🗃 *The data for all outputs, questions, and links '
+    st.sidebar.markdown('🧑🏽‍💻 *The data for all outputs, questions, and links '
                         'to the articles in this application is entirely from '
                         'the CORD-19 dataset.*')
 
@@ -53,7 +54,7 @@ def sidebar_tail(st):
 def main_app_body(st):
     # Content displayed at the bottom of the page:
     st.markdown('---')
-    st.markdown('#### Outputs based on the following:')
+    st.markdown('#### 📑 Dataset Info')
     st.markdown(f'- dataset             : `{VERSION}`')
     st.markdown(f'- subsets             : `{SUBSETS}`')
     st.markdown(f'- papers              : `{NUM_PAPERS:,.0f}`')
@@ -90,7 +91,7 @@ def render_answer(st, question, answer, context) -> Callable:
         # markdown template formats:
         highlight, bold = '`{}`', '**{}**'
         answer_title_md = '### 💡 Answer'
-        context_title_md = '### ⚗ Context'
+        context_title_md = '### ⚗️ Context'
         summary_title_md = '### 📃 Summary'
         if len(answer) == 0:
             st.markdown(summary_title_md)
@@ -116,12 +117,11 @@ def render_answer(st, question, answer, context) -> Callable:
     return function
 
 
-def render_about(st, nsids: int, npids: int) -> Callable:
+def render_about(st, nsids: Any, npids: Any) -> Callable:
     def function(st=st, nsids=nsids, npids=npids):
-        out1 = f'Answer based on {NUM_SENTS}/***{nsids}*** sentences '
-        out2 = f'obtained from {NUM_PAPERS}/***{npids}*** papers:'
-        st.markdown('---')
-        st.markdown(out1 + out2)
+        sids = f'Answer based on {nsids}/{NUM_SENTS} ***sentences***'
+        pids = f'obtained from {npids}/{NUM_PAPERS} ***papers***'
+        st.markdown(f'---\n{sids} {pids}')
     return function
 
 
