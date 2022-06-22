@@ -7,7 +7,7 @@ plac==0.9.6
 ibm_cloud_sdk_core==1.5.1
 toml==0.10.1
 uvicorn==0.11.7
-numpy==1.18.4
+numpy==1.22.0
 faiss==1.6.3
 ibm_watson==4.5.0
 pydub==0.24.1
